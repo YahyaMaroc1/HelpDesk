@@ -52,7 +52,7 @@ Run from the project root:
 ## Conventions
 
 - All API routes live under `/api`; the client calls relative `/api/...` URLs.
-- Better Auth is mounted at `/api/auth/*splat` **before** `express.json()` (it needs the raw body). Its tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`; re-run after changing auth config/plugins, then `bun run db:migrate`. Seed the admin with `bun run db:seed` (from `ADMIN_*` in `server/.env`).
+- Better Auth is mounted at `/api/auth/*splat` **before** `express.json()` (it needs the raw body). Its tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`; re-run after changing auth config/plugins, then `bun run db:migrate` (the generator writes `role` as `String`, so restore the `Role` enum before migrating). `User.role` is registered in `auth.ts` as an `additionalField` with `input: false`, so it is on the session user but clients can never set it. Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`; create users server-side via `internalAdapter.createUser` + `linkAccount` as in `prisma/seed.ts`. Seed the admin with `bun run db:seed` (from `ADMIN_*` in `server/.env`).
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
 - Local imports include the `.ts`/`.tsx` extension.
 - Bun loads `.env` automatically; keep `.env.example` files up to date and never commit `.env`.

@@ -1,4 +1,5 @@
 // Creates the admin user from ADMIN_* env vars. Run with `bun run db:seed`.
+import { Role } from "../src/generated/prisma/enums.ts";
 import { auth } from "../src/lib/auth.ts";
 import { prisma } from "../src/lib/prisma.ts";
 
@@ -11,8 +12,18 @@ const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } })
 if (existing) {
   console.log(`Admin ${ADMIN_EMAIL} already exists; skipping.`);
 } else {
-  // Goes through Better Auth so the password is hashed and the credential account row is created.
-  await auth.api.signUpEmail({ body: { name: ADMIN_NAME, email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+  // Public sign-up is disabled, so create the user and credential account the way Better Auth's sign-up does.
+  const ctx = await auth.$context;
+  const user = await ctx.internalAdapter.createUser(
+    { name: ADMIN_NAME, email: ADMIN_EMAIL.toLowerCase(), emailVerified: false, role: Role.ADMIN },
+    { method: "email-password" },
+  );
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: "credential",
+    accountId: user.id,
+    password: await ctx.password.hash(ADMIN_PASSWORD),
+  });
   console.log(`Created admin ${ADMIN_EMAIL}.`);
 }
 
