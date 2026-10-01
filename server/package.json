@@ -1,0 +1,26 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "bun --bun prisma generate",
+    "db:generate": "bun --bun prisma generate",
+    "db:migrate": "bun --bun prisma migrate dev",
+    "db:deploy": "bun --bun prisma migrate deploy",
+    "db:studio": "bun --bun prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/express": "^5.0.6",
+    "prisma": "7.10.0",
+    "typescript": "^7.0.2"
+  }
+}
