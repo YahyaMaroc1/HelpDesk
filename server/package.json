@@ -10,11 +10,13 @@
     "db:generate": "bun --bun prisma generate",
     "db:migrate": "bun --bun prisma migrate dev",
     "db:deploy": "bun --bun prisma migrate deploy",
+    "db:seed": "bun --bun prisma db seed",
     "db:studio": "bun --bun prisma studio"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "better-auth": "^1.7.7",
     "express": "^5.2.1"
   },
   "devDependencies": {

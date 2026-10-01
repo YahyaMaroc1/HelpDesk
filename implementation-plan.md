@@ -17,7 +17,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 ## Phase 2 – Database Schema
 
 - [ ] 2.1 `User` model: name, email, password hash, role (`ADMIN` / `AGENT`), active flag, timestamps
-- [ ] 2.2 `Session` model: session ID, user ID, expiry
+- [x] 2.2 `Session` model: session ID, user ID, expiry
 - [ ] 2.3 `Ticket` model: subject, sender email and name, status (`OPEN` / `RESOLVED` / `CLOSED`), category (`GENERAL_QUESTION` / `TECHNICAL_QUESTION` / `REFUND_REQUEST`, nullable until classified), AI summary, assigned agent, timestamps
 - [ ] 2.4 `Message` model: ticket ID, direction (inbound / outbound), body, sender, email message ID (for threading), timestamp
 - [ ] 2.5 `KnowledgeBaseArticle` model: title, content, timestamps
@@ -28,10 +28,10 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 
 ## Phase 3 – Authentication
 
-- [ ] 3.1 Password hashing helpers
-- [ ] 3.2 `POST /api/auth/login`: check credentials, create a session row, set an `HttpOnly`, `Secure`, `SameSite` cookie
-- [ ] 3.3 `POST /api/auth/logout`: delete the session and clear the cookie
-- [ ] 3.4 `GET /api/auth/me`: return the current user
+- [x] 3.1 Password hashing (handled by Better Auth)
+- [x] 3.2 Login: Better Auth `POST /api/auth/sign-in/email` (creates a session row, sets an `HttpOnly` cookie)
+- [x] 3.3 Logout: Better Auth `POST /api/auth/sign-out`
+- [x] 3.4 `GET /api/me`: return the current user (also `GET /api/auth/get-session`)
 - [ ] 3.5 `requireAuth` middleware: look up the session, reject expired sessions and inactive users
 - [ ] 3.6 `requireAdmin` middleware
 - [ ] 3.7 Client: login page

@@ -26,6 +26,8 @@ server/   Express 5 + TypeScript, running on Bun
   src/app.ts     Express app, routes, error handler, serves client/dist in production
   src/routes/    one router per resource, mounted under /api
   src/lib/prisma.ts  the shared PrismaClient (import `prisma` from here; never create another)
+  src/lib/auth.ts    Better Auth config (email/password, sessions stored in Postgres)
+  src/middleware/requireAuth.ts  401s without a session; sets res.locals.user / res.locals.session
   src/generated/     generated Prisma client (gitignored; don't edit)
   prisma/schema.prisma, prisma.config.ts   Prisma 7 schema and CLI config
 ```
@@ -50,6 +52,7 @@ Run from the project root:
 ## Conventions
 
 - All API routes live under `/api`; the client calls relative `/api/...` URLs.
+- Better Auth is mounted at `/api/auth/*splat` **before** `express.json()` (it needs the raw body). Its tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`; re-run after changing auth config/plugins, then `bun run db:migrate`. Seed the admin with `bun run db:seed` (from `ADMIN_*` in `server/.env`).
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
 - Local imports include the `.ts`/`.tsx` extension.
 - Bun loads `.env` automatically; keep `.env.example` files up to date and never commit `.env`.

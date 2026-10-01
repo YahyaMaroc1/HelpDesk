@@ -1,13 +1,20 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express, { type ErrorRequestHandler } from "express";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./lib/auth.ts";
 import { healthRouter } from "./routes/health.ts";
+import { meRouter } from "./routes/me.ts";
 
 export const app = express();
+
+// Better Auth reads the raw body, so it must be mounted before express.json().
+app.all("/api/auth/*splat", toNodeHandler(auth));
 
 app.use(express.json());
 
 app.use("/api/health", healthRouter);
+app.use("/api/me", meRouter);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
