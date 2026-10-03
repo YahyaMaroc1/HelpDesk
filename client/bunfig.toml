@@ -1,0 +1,3 @@
+# Tailwind for the dev server's HTML import (dev.ts). Production builds add the plugin in build.ts.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

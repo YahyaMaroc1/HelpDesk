@@ -19,8 +19,12 @@ Bun workspaces with a single `bun.lock` at the root:
 ```
 client/   React 19 + TypeScript, bundled by Bun (no Vite)
   dev.ts      Bun dev server: HMR + proxies /api to the server
+  build.ts    production build (Bun.build + Tailwind plugin) into dist/
+  bunfig.toml enables bun-plugin-tailwind for the dev server
   index.html  entry point
-  src/        app code
+  src/        app code (React Router: App.tsx route table, pages/, components/)
+  src/lib/auth-client.ts  Better Auth React client (useSession, signIn, signOut)
+  src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
 server/   Express 5 + TypeScript, running on Bun
   src/index.ts   starts the server
   src/app.ts     Express app, routes, error handler, serves client/dist in production

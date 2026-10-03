@@ -34,9 +34,9 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [x] 3.4 `GET /api/me`: return the current user (also `GET /api/auth/get-session`)
 - [ ] 3.5 `requireAuth` middleware: look up the session, reject expired sessions and inactive users
 - [ ] 3.6 `requireAdmin` middleware
-- [ ] 3.7 Client: login page
-- [ ] 3.8 Client: auth context that loads `/api/auth/me` on startup
-- [ ] 3.9 Client: protected routes that redirect to login, and a logout button
+- [x] 3.7 Client: login page
+- [x] 3.8 Client: load the session on startup (Better Auth `useSession` → `GET /api/auth/get-session`)
+- [x] 3.9 Client: protected routes that redirect to login, and a logout button
 
 **Done when:** the seeded admin can log in, reload the page and stay logged in, and log out.
 

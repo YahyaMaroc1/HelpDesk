@@ -4,17 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "bun dev.ts",
-    "build": "bun build ./index.html --production --public-path=/ --outdir=dist",
+    "build": "bun build.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-auth": "^1.7.7",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "bun-plugin-tailwind": "^0.1.2",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
   }
 }
