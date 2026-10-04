@@ -1,8 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { CircleAlertIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { Navigate } from "react-router";
 import { z } from "zod";
-import { authClient } from "../lib/auth-client.ts";
+import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { authClient } from "@/lib/auth-client.ts";
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, "Email is required").pipe(z.email("Enter a valid email address")),
@@ -10,9 +16,6 @@ const loginSchema = z.object({
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
-
-const inputClass =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none aria-invalid:border-red-500 aria-invalid:focus:border-red-500 aria-invalid:focus:ring-red-500";
 
 export function LoginPage() {
   const { data: session, isPending } = authClient.useSession();
@@ -27,7 +30,7 @@ export function LoginPage() {
   });
 
   if (isPending) {
-    return <p className="mt-24 text-center text-gray-500">Loading…</p>;
+    return <p className="mt-24 text-center text-muted-foreground">Loading…</p>;
   }
   if (session) {
     return <Navigate to="/" replace />;
@@ -45,62 +48,52 @@ export function LoginPage() {
   const busy = isSubmitting || (isSubmitSuccessful && !errors.root);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-2xl font-semibold text-gray-900">Sign in to HelpDesk</h1>
-        {errors.root && (
-          <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-            {errors.root.message}
-          </p>
-        )}
-        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-          <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              aria-invalid={errors.email ? true : undefined}
-              aria-describedby={errors.email ? "email-error" : undefined}
-              className={inputClass}
-              {...register("email")}
-            />
-            {errors.email && (
-              <p id="email-error" className="mt-1 text-sm text-red-700">
-                {errors.email.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              aria-invalid={errors.password ? true : undefined}
-              aria-describedby={errors.password ? "password-error" : undefined}
-              className={inputClass}
-              {...register("password")}
-            />
-            {errors.password && (
-              <p id="password-error" className="mt-1 text-sm text-red-700">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">Sign in to HelpDesk</CardTitle>
+          <CardDescription>Enter your email and password to continue.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+            <FieldGroup>
+              {errors.root && (
+                <Alert variant="destructive">
+                  <CircleAlertIcon />
+                  <AlertDescription>{errors.root.message}</AlertDescription>
+                </Alert>
+              )}
+              <Field data-invalid={errors.email ? true : undefined}>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  aria-invalid={errors.email ? true : undefined}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  {...register("email")}
+                />
+                <FieldError id="email-error" errors={[errors.email]} />
+              </Field>
+              <Field data-invalid={errors.password ? true : undefined}>
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  aria-invalid={errors.password ? true : undefined}
+                  aria-describedby={errors.password ? "password-error" : undefined}
+                  {...register("password")}
+                />
+                <FieldError id="password-error" errors={[errors.password]} />
+              </Field>
+              <Button type="submit" disabled={busy} className="w-full">
+                {busy ? "Signing in…" : "Sign in"}
+              </Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

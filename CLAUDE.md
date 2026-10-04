@@ -23,6 +23,8 @@ client/   React 19 + TypeScript, bundled by Bun (no Vite)
   bunfig.toml enables bun-plugin-tailwind for the dev server
   index.html  entry point
   src/        app code (React Router: App.tsx route table, pages/, components/)
+  src/styles.css  Tailwind + shadcn theme (CSS variables, light and .dark)
+  src/components/ui/  shadcn/ui components (generated; add with `bunx shadcn add <name>` from client/)
   src/lib/auth-client.ts  Better Auth React client (useSession, signIn, signOut)
   src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
 server/   Express 5 + TypeScript, running on Bun
@@ -58,6 +60,7 @@ Run from the project root:
 - All API routes live under `/api`; the client calls relative `/api/...` URLs.
 - Better Auth is mounted at `/api/auth/*splat` **before** `express.json()` (it needs the raw body). Its tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`; re-run after changing auth config/plugins, then `bun run db:migrate` (the generator writes `role` as `String`, so restore the `Role` enum before migrating). `User.role` is registered in `auth.ts` as an `additionalField` with `input: false`, so it is on the session user but clients can never set it. Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`; create users server-side via `internalAdapter.createUser` + `linkAccount` as in `prisma/seed.ts`. Seed the admin with `bun run db:seed` (from `ADMIN_*` in `server/.env`).
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
-- Local imports include the `.ts`/`.tsx` extension.
+- Local imports include the `.ts`/`.tsx` extension. In the client, `@/*` maps to `client/src/*`.
+- shadcn/ui is set up manually (`client/components.json`, style `base-nova`, neutral) because the CLI can't detect a framework with Bun's bundler, so `init` fails but `add` works. `add` doesn't always install a component's npm dependencies (e.g. `@base-ui/react`): `bun add` them yourself if typecheck can't find them.
 - Bun loads `.env` automatically; keep `.env.example` files up to date and never commit `.env`.
 - Ticket statuses: `OPEN`, `RESOLVED`, `CLOSED`. Categories: `GENERAL_QUESTION`, `TECHNICAL_QUESTION`, `REFUND_REQUEST`. Roles: `ADMIN`, `AGENT`.

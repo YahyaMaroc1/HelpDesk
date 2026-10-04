@@ -4,6 +4,7 @@
 
 * React with TypeScript
 * Tailwind CSS
+* shadcn/ui (Base UI primitives, default theme)
 * React Router
 * React Hook Form + Zod for forms and validation
 
