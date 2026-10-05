@@ -29,7 +29,7 @@ client/   React 19 + TypeScript, bundled by Bun (no Vite)
   src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
 server/   Express 5 + TypeScript, running on Bun
   src/index.ts   starts the server
-  src/app.ts     Express app, routes, error handler, serves client/dist in production
+  src/app.ts     Express app, routes, error handler, serves client/dist in production (and NODE_ENV=test)
   src/routes/    one router per resource, mounted under /api
   src/lib/prisma.ts  the shared PrismaClient (import `prisma` from here; never create another)
   src/lib/auth.ts    Better Auth config (email/password, sessions stored in Postgres)
@@ -37,11 +37,24 @@ server/   Express 5 + TypeScript, running on Bun
   src/middleware/requireAdmin.ts 403s non-admins; use after requireAuth
   src/generated/     generated Prisma client (gitignored; don't edit)
   prisma/schema.prisma, prisma.config.ts   Prisma 7 schema and CLI config
+e2e/      Playwright end-to-end tests (runs on Node, not Bun)
+  playwright.config.ts  starts a test server on :3100 against the test database
+  test-env.ts  loads e2e/.env, test port/URL, the seeded test admin (`testAdmin`)
+  tests/       *.spec.ts files
 ```
+
+## End-to-end tests
+
+- `bun run test:e2e` (root) or `bun run test` / `test:ui` / `report` from `e2e/`. Browsers: `bunx playwright install chromium` from `e2e/`.
+- The tests use their own database, `TEST_DATABASE_URL` in `e2e/.env` (copy `e2e/.env.example`). The name must end in `_test`, or `test-env.ts` refuses to run, because every run wipes it.
+- On every run (no server reuse), Playwright's `webServer` runs `prisma migrate reset --force` (it creates the DB if missing), then `prisma db seed` (Prisma 7 no longer seeds on reset), then builds the client and starts the API with `NODE_ENV=test` on `TEST_PORT` (3100), which serves the built client like production but without rate limiting. The browser and API share one origin, so no `CLIENT_ORIGIN` is needed. It's separate from the dev server on :3000/:5173, so both can run at once. Its env overrides `server/.env`; `BETTER_AUTH_SECRET` still comes from `server/.env`.
+- The seed creates `testAdmin` (from `test-env.ts`). Import it in tests rather than hard-coding credentials.
+- Rate limiting is off on the test server (`NODE_ENV=test`), so tests can sign in as often as they need. Saving a `storageState` is still faster than signing in in every test.
+- Prisma blocks `migrate reset` when Claude Code runs it, so `bun run test:e2e` fails when run by an agent unless the user explicitly consents (`PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`).
 
 ## Database
 
-- Local PostgreSQL 18 (Windows service), database `helpdesk`. Connection string is `DATABASE_URL` in `server/.env`.
+- Local PostgreSQL 18 (Windows service). Dev database `helpdesk` (`DATABASE_URL` in `server/.env`); e2e database `helpdesk_test` (`TEST_DATABASE_URL` in `e2e/.env`), which every e2e run wipes and re-seeds.
 - Prisma 7.10.0 (pinned; the npm `latest` tag for `prisma` is an 8.0 RC — don't upgrade to it). Uses the `prisma-client` generator with the `@prisma/adapter-pg` driver adapter.
 - Run Prisma CLI through the `db:*` scripts in `server/` (they use `bun --bun prisma ...`). After changing the schema: `bun run db:migrate` from `server/`.
 - `psql` is not on PATH: use `"/c/Program Files/PostgreSQL/18/bin/psql.exe"`.
@@ -70,7 +83,7 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 - `pages/LoginPage.tsx` signs in with `authClient.signIn.email` and redirects to `/` once `useSession` has a session; it also redirects already-signed-in users. `Layout.tsx` has the nav bar (admin-only links like Users, shown when `session.user.role === "ADMIN"`) and the sign-out button. Both rely on the session store refetching rather than navigating by hand.
 
 **Rate limiting**
-- Better Auth's rate limiter is on in every environment (`rateLimit: { enabled: true, storage: "database" }`), with counters in the `rateLimit` table. Sign-in allows 3 requests per 10 s per IP, so repeated test sign-ins locally can get 429 `Too many requests`; wait 10 s.
+- Better Auth's rate limiter is on only when `NODE_ENV=production` (`bun run start`): `rateLimit: { enabled: process.env.NODE_ENV === "production", storage: "database" }`, with counters in the `rateLimit` table. Sign-in then allows 3 requests per 10 s per IP (429 `Too many requests`). It's off in dev (`bun run dev`) and on the e2e test server (`NODE_ENV=test`).
 - Better Auth reads the client IP from `X-Forwarded-For`. `app.ts` overwrites that header on `/api/auth` with Express's `req.ip`, so clients can't spoof it. Behind a reverse proxy, set `TRUST_PROXY` (Express's `trust proxy` value: proxy address/CIDR or hop count) so `req.ip` is the real client; otherwise everyone shares the proxy's IP and one limit.
 
 **Origin check (CSRF)**
@@ -80,11 +93,11 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 
 Run from the project root:
 
-- `bun install` – install dependencies (use `bun add` inside `client/` or `server/` to add packages; never npm/yarn)
+- `bun install` – install dependencies (use `bun add` inside `client/`, `server/` or `e2e/` to add packages; never npm/yarn)
 - `bun run dev` – API on :3000, client on :5173. The user often leaves it running: check the ports before starting another. Restart it after changing a `tsconfig.json`, because the dev server reads path aliases only at startup (`bun run build` and `tsc` pick them up immediately).
 - `bun run build` – build the client into `client/dist`
-- `bun run start` – production: API + built client on :3000
-- `bun run typecheck` – type-check both packages; run it after every change
+- `bun run start` – production: API + built client on :3000, with `NODE_ENV=production` (turns on rate limiting). Deployments must set `NODE_ENV=production` too, or login isn't rate-limited.
+- `bun run typecheck` – type-check all workspaces (client, server, e2e); run it after every change
 
 ## Conventions
 
@@ -94,5 +107,5 @@ Run from the project root:
 - shadcn/ui is set up manually (`client/components.json`, style `base-nova`, neutral) because the CLI can't detect a framework with Bun's bundler, so `init` fails but `add` works. `add` doesn't always install a component's npm dependencies (e.g. `@base-ui/react`): `bun add` them yourself if typecheck can't find them.
 - Build UI from shadcn components and theme tokens (`bg-background`, `text-muted-foreground`, `text-destructive`, …), not raw Tailwind palette colors like `gray-500`. `pages/LoginPage.tsx` is the reference form: React Hook Form + Zod with `Field`/`FieldLabel`/`Input`/`FieldError`, plus an `Alert` for server errors. `Layout.tsx` and `HomePage.tsx` still use the old raw styling.
 - `styles.css` hides Chrome's autofill colors with an unlayered `:autofill` rule (a long transition delay, because Chrome's background is `!important`). Keep it outside `@layer`, or the `transition-colors` utility on `Input` overrides it.
-- Bun loads `.env` automatically; keep `.env.example` files up to date and never commit `.env`.
+- Bun loads `.env` automatically (Playwright runs on Node, so `e2e/test-env.ts` loads `e2e/.env` itself); keep `.env.example` files up to date and never commit `.env`.
 - Ticket statuses: `OPEN`, `RESOLVED`, `CLOSED`. Categories: `GENERAL_QUESTION`, `TECHNICAL_QUESTION`, `REFUND_REQUEST`. Roles: `ADMIN`, `AGENT`.

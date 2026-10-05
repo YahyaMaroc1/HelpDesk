@@ -21,6 +21,10 @@
 
 * Prisma
 
+## Testing
+
+* Playwright for end-to-end tests, against a separate `helpdesk_test` database
+
 ## AI
 
 * Claude API (Anthropic) for ticket classification, summaries, and suggested replies

@@ -19,10 +19,11 @@ export const auth = betterAuth({
   },
   // The client dev server proxies /api but forwards the browser's Origin header.
   trustedOrigins: process.env.CLIENT_ORIGIN ? [process.env.CLIENT_ORIGIN] : [],
-  // On in every environment (Better Auth's default is production only), stored in Postgres so limits
-  // survive restarts. Sign-in keeps the built-in 3 requests / 10 s per IP. The client IP comes from
-  // X-Forwarded-For, which app.ts overwrites with Express's req.ip so clients can't spoof it.
-  rateLimit: { enabled: true, storage: "database" },
+  // Production only (NODE_ENV=production), so dev and the e2e tests (NODE_ENV=test) aren't throttled.
+  // Stored in Postgres so limits survive restarts. Sign-in keeps the built-in 3 requests / 10 s per IP.
+  // The client IP comes from X-Forwarded-For, which app.ts overwrites with Express's req.ip so clients
+  // can't spoof it.
+  rateLimit: { enabled: process.env.NODE_ENV === "production", storage: "database" },
 });
 
 export type Session = typeof auth.$Infer.Session;

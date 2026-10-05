@@ -5,3 +5,9 @@ dist/
 !.env.example
 *.log
 server/src/generated/
+# Playwright
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+e2e/playwright/.cache/
+e2e/playwright/.auth/
