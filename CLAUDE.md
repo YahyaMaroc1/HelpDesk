@@ -34,6 +34,7 @@ server/   Express 5 + TypeScript, running on Bun
   src/lib/prisma.ts  the shared PrismaClient (import `prisma` from here; never create another)
   src/lib/auth.ts    Better Auth config (email/password, sessions stored in Postgres)
   src/middleware/requireAuth.ts  401s without a session; sets res.locals.user / res.locals.session
+  src/middleware/requireAdmin.ts 403s non-admins; use after requireAuth
   src/generated/     generated Prisma client (gitignored; don't edit)
   prisma/schema.prisma, prisma.config.ts   Prisma 7 schema and CLI config
 ```
@@ -53,12 +54,12 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 - Config is in `server/src/lib/auth.ts`. It reads `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` from `server/.env` and exports `auth` plus the `Session` type (`Session["user"]` includes `role`).
 - The handler is mounted at `/api/auth/*splat` **before** `express.json()`, because it needs the raw body.
 - Protect a route with the `requireAuth` middleware (`server/src/middleware/requireAuth.ts`). It answers 401 `{ error: "Unauthorized" }` without a session; otherwise it sets `res.locals.user` / `res.locals.session` (type them with `Session["user"]`, as in `routes/me.ts`). Elsewhere, call `auth.api.getSession({ headers: fromNodeHeaders(req.headers) })`.
-- No role-based middleware exists yet. Admin-only routes need a check on `res.locals.user.role === Role.ADMIN` after `requireAuth`, with `Role` imported from `src/generated/prisma/enums.ts`.
+- Protect admin-only routes with `requireAdmin` after `requireAuth` (403 `{ error: "Forbidden" }` unless `role === Role.ADMIN`). Mount it on the whole router, e.g. `app.use("/api/users", requireAuth, requireAdmin, usersRouter)`. The client's `RequireAdmin` only hides pages; every admin API route needs this server-side check.
 - `GET /api/me` returns the current user and is the example of a protected route.
 
 **Users and roles**
 - `User.role` is a Prisma `Role` enum (`ADMIN`, `AGENT`; default `AGENT`). It's registered in `auth.ts` as an `additionalField` with `input: false`, so it's on the session user but clients can never set it.
-- Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`. Create users server-side the way `prisma/seed.ts` does: `(await auth.$context).internalAdapter.createUser(...)`, then `linkAccount({ providerId: "credential", accountId: user.id, password: await ctx.password.hash(pw) })`, lowercasing the email.
+- Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`. Create users server-side the way `prisma/seed.ts` does: `(await auth.$context).internalAdapter.createUser(...)`, then `linkAccount({ providerId: "credential", accountId: user.id, password: await ctx.password.hash(pw) })`, lowercasing the email. Hashing directly skips Better Auth's password-length check (`minPasswordLength: 12`), so check `ctx.password.config` yourself, as the seed does.
 - `bun run db:seed` (from `server/`) creates the admin from `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `server/.env`, and skips it if it already exists.
 - Better Auth's tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`. Re-run it after changing the auth config or plugins, then `bun run db:migrate`. The generator writes `role` as `String`, so restore the `Role` enum before migrating.
 
@@ -67,6 +68,10 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 - `components/RequireAuth.tsx` is a layout route: it shows "Loading…" while the session loads and redirects to `/login` without one. Put every signed-in page under it in `App.tsx`.
 - `components/RequireAdmin.tsx` is a layout route nested inside `RequireAuth`/`Layout`: it redirects non-admins to `/`. Put admin-only pages (e.g. `/users`) under it. It's a UI guard only; admin API routes still need their own server-side role check.
 - `pages/LoginPage.tsx` signs in with `authClient.signIn.email` and redirects to `/` once `useSession` has a session; it also redirects already-signed-in users. `Layout.tsx` has the nav bar (admin-only links like Users, shown when `session.user.role === "ADMIN"`) and the sign-out button. Both rely on the session store refetching rather than navigating by hand.
+
+**Rate limiting**
+- Better Auth's rate limiter is on in every environment (`rateLimit: { enabled: true, storage: "database" }`), with counters in the `rateLimit` table. Sign-in allows 3 requests per 10 s per IP, so repeated test sign-ins locally can get 429 `Too many requests`; wait 10 s.
+- Better Auth reads the client IP from `X-Forwarded-For`. `app.ts` overwrites that header on `/api/auth` with Express's `req.ip`, so clients can't spoof it. Behind a reverse proxy, set `TRUST_PROXY` (Express's `trust proxy` value: proxy address/CIDR or hop count) so `req.ip` is the real client; otherwise everyone shares the proxy's IP and one limit.
 
 **Origin check (CSRF)**
 - `trustedOrigins` is only `CLIENT_ORIGIN` (`http://localhost:5173` in `.env.example`). The dev proxy forwards the browser's `Origin`, so cookie-bearing auth requests (sign-in, sign-out) from any other origin get 403 `INVALID_ORIGIN`. This includes a test client on another port. In production the API serves the client, so the page's origin is `BETTER_AUTH_URL`, which Better Auth trusts by default. Set `CLIENT_ORIGIN` only when the client is served from a different origin.

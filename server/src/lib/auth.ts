@@ -8,7 +8,9 @@ import { prisma } from "./prisma.ts";
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   // No public sign-up: users are created server-side (see prisma/seed.ts).
-  emailAndPassword: { enabled: true, disableSignUp: true },
+  // minPasswordLength applies when a password is set or changed, not at sign-in. Code that hashes
+  // passwords itself (prisma/seed.ts, future user management) must check it too.
+  emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
   user: {
     additionalFields: {
       // Values come from the Role enum in schema.prisma. input: false so clients can never set it.
@@ -17,6 +19,10 @@ export const auth = betterAuth({
   },
   // The client dev server proxies /api but forwards the browser's Origin header.
   trustedOrigins: process.env.CLIENT_ORIGIN ? [process.env.CLIENT_ORIGIN] : [],
+  // On in every environment (Better Auth's default is production only), stored in Postgres so limits
+  // survive restarts. Sign-in keeps the built-in 3 requests / 10 s per IP. The client IP comes from
+  // X-Forwarded-For, which app.ts overwrites with Express's req.ip so clients can't spoof it.
+  rateLimit: { enabled: true, storage: "database" },
 });
 
 export type Session = typeof auth.$Infer.Session;
