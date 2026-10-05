@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { Link, Outlet } from "react-router";
 import { authClient } from "../lib/auth-client.ts";
 
 export function Layout() {
@@ -17,7 +17,16 @@ export function Layout() {
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <nav className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <span className="text-lg font-semibold">HelpDesk</span>
+          <div className="flex items-center gap-6">
+            <Link to="/" className="text-lg font-semibold">
+              HelpDesk
+            </Link>
+            {session?.user.role === "ADMIN" && (
+              <Link to="/users" className="text-sm font-medium text-gray-700 hover:text-gray-900">
+                Users
+              </Link>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-700">{session?.user.name}</span>
             <button

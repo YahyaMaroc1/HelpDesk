@@ -65,7 +65,8 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 **Client**
 - `client/src/lib/auth-client.ts` exports `authClient` (`useSession`, `signIn.email`, `signOut`). It uses the default base URL `/api/auth` (same origin through the dev proxy). `inferAdditionalFields` types `role` on the session user, but only as `string`, so keep it in sync with `auth.ts` if fields change.
 - `components/RequireAuth.tsx` is a layout route: it shows "Loading…" while the session loads and redirects to `/login` without one. Put every signed-in page under it in `App.tsx`.
-- `pages/LoginPage.tsx` signs in with `authClient.signIn.email` and redirects to `/` once `useSession` has a session; it also redirects already-signed-in users. `Layout.tsx` has the sign-out button. Both rely on the session store refetching rather than navigating by hand.
+- `components/RequireAdmin.tsx` is a layout route nested inside `RequireAuth`/`Layout`: it redirects non-admins to `/`. Put admin-only pages (e.g. `/users`) under it. It's a UI guard only; admin API routes still need their own server-side role check.
+- `pages/LoginPage.tsx` signs in with `authClient.signIn.email` and redirects to `/` once `useSession` has a session; it also redirects already-signed-in users. `Layout.tsx` has the nav bar (admin-only links like Users, shown when `session.user.role === "ADMIN"`) and the sign-out button. Both rely on the session store refetching rather than navigating by hand.
 
 **Origin check (CSRF)**
 - `trustedOrigins` is only `CLIENT_ORIGIN` (`http://localhost:5173` in `.env.example`). The dev proxy forwards the browser's `Origin`, so cookie-bearing auth requests (sign-in, sign-out) from any other origin get 403 `INVALID_ORIGIN`. This includes a test client on another port. In production the API serves the client, so the page's origin is `BETTER_AUTH_URL`, which Better Auth trusts by default. Set `CLIENT_ORIGIN` only when the client is served from a different origin.
