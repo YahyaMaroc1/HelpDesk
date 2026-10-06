@@ -1,6 +1,7 @@
 // Settings shared by playwright.config.ts and the tests. The test server runs on its own port against its
 // own database, so it never touches the dev server (:3000/:5173) or the dev database.
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // Playwright runs on Node, which doesn't load .env automatically. Already-set variables win (e.g. in CI).
 if (existsSync(new URL(".env", import.meta.url))) process.loadEnvFile(new URL(".env", import.meta.url));
@@ -23,3 +24,22 @@ export const testAdmin = {
   email: "admin@test.local",
   password: "test-admin-password",
 };
+
+// AGENT users created by server/prisma/seed-e2e.ts. Passwords must be at least 12 characters.
+// testAgent is only read by tests (its storageState is shared). testEscalationAgent is for the test that
+// tries to change its own role, so a regression there can't affect other tests.
+export const testAgent = {
+  name: "Test Agent",
+  email: "agent@test.local",
+  password: "test-agent-password",
+};
+export const testEscalationAgent = {
+  name: "Escalation Agent",
+  email: "escalation-agent@test.local",
+  password: "test-escalation-password",
+};
+
+// Saved by tests/auth.setup.ts; used as storageState by tests that need a signed-in user.
+const authDir = fileURLToPath(new URL("./playwright/.auth/", import.meta.url));
+export const adminAuthFile = `${authDir}admin.json`;
+export const agentAuthFile = `${authDir}agent.json`;
