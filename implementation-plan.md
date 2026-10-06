@@ -33,7 +33,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [x] 3.3 Logout: Better Auth `POST /api/auth/sign-out`
 - [x] 3.4 `GET /api/me`: return the current user (also `GET /api/auth/get-session`)
 - [ ] 3.5 `requireAuth` middleware: look up the session, reject expired sessions and inactive users
-- [ ] 3.6 `requireAdmin` middleware
+- [x] 3.6 `requireAdmin` middleware
 - [x] 3.7 Client: login page
 - [x] 3.8 Client: load the session on startup (Better Auth `useSession` → `GET /api/auth/get-session`)
 - [x] 3.9 Client: protected routes that redirect to login, and a logout button
@@ -42,14 +42,14 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 
 ## Phase 4 – User Management (Admin Only)
 
-- [ ] 4.1 `GET /api/users`: list users
+- [x] 4.1 `GET /api/users`: list users
 - [ ] 4.2 `POST /api/users`: create an agent
 - [ ] 4.3 `PATCH /api/users/:id`: edit name/email, activate or deactivate
 - [ ] 4.4 Deactivating a user deletes their sessions so it takes effect immediately
 - [ ] 4.5 Validate request bodies and return clear errors (e.g. duplicate email)
-- [ ] 4.6 Client: users page with a table of users
+- [x] 4.6 Client: users page with a table of users
 - [ ] 4.7 Client: create-agent form and edit/deactivate actions
-- [ ] 4.8 Client: hide the users page from agents in the navigation
+- [x] 4.8 Client: hide the users page from agents in the navigation
 
 **Done when:** the admin can create an agent, the agent can log in, and deactivating the agent logs them out.
 

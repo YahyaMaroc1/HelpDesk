@@ -3,8 +3,11 @@ import path from "node:path";
 import express, { type ErrorRequestHandler } from "express";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.ts";
+import { requireAdmin } from "./middleware/requireAdmin.ts";
+import { requireAuth } from "./middleware/requireAuth.ts";
 import { healthRouter } from "./routes/health.ts";
 import { meRouter } from "./routes/me.ts";
+import { usersRouter } from "./routes/users.ts";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -45,6 +48,7 @@ app.use(express.json({ limit: "100kb" }));
 
 app.use("/api/health", healthRouter);
 app.use("/api/me", meRouter);
+app.use("/api/users", requireAuth, requireAdmin, usersRouter);
 
 app.use("/api", (_req, res) => {
   res.status(404).json({ error: "Not found" });
