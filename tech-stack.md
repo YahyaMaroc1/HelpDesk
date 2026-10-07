@@ -7,6 +7,7 @@
 * shadcn/ui (Base UI primitives, default theme)
 * React Router
 * React Hook Form + Zod for forms and validation
+* Axios for API requests, with TanStack Query for fetching and caching server data
 
 ## Backend
 

@@ -1,29 +1,25 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api, apiErrorMessage } from "../lib/api.ts";
 import { authClient } from "../lib/auth-client.ts";
 
 type Health = { status: string; database: string; runtime: string; time: string };
 
 export function HomePage() {
   const { data: session } = authClient.useSession();
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then(async (res) => {
-        // A 503 still carries a health body (e.g. database unreachable), so only fail on other errors.
-        if (!res.ok && res.status !== 503) throw new Error(`HTTP ${res.status}`);
-        return (await res.json()) as Health;
-      })
-      .then(setHealth)
-      .catch((err: Error) => setError(err.message));
-  }, []);
+  const { data: health, error } = useQuery({
+    queryKey: ["health"],
+    queryFn: async ({ signal }) => {
+      // A 503 still carries a health body (e.g. database unreachable), so only fail on other errors.
+      const validateStatus = (status: number) => (status >= 200 && status < 300) || status === 503;
+      return (await api.get<Health>("/health", { signal, validateStatus })).data;
+    },
+  });
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Welcome, {session?.user.name}</h1>
       <div className="text-sm text-gray-600">
-        {error && <p className="text-red-700">API unreachable: {error}</p>}
+        {error && <p className="text-red-700">API unreachable: {apiErrorMessage(error)}</p>}
         {!error && !health && <p>Checking API…</p>}
         {health && (
           <>

@@ -1,8 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { CircleAlertIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
+import { api, apiErrorMessage } from "@/lib/api.ts";
 
 // Shape of GET /api/users (server/src/routes/users.ts).
 type User = {
@@ -14,25 +15,10 @@ type User = {
 };
 
 export function UsersPage() {
-  const [users, setUsers] = useState<User[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/users", { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(body?.error ?? `HTTP ${res.status}`);
-        }
-        return ((await res.json()) as { users: User[] }).users;
-      })
-      .then(setUsers)
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") setError(err.message);
-      });
-    return () => controller.abort();
-  }, []);
+  const { data: users, error } = useQuery({
+    queryKey: ["users"],
+    queryFn: async ({ signal }) => (await api.get<{ users: User[] }>("/users", { signal })).data.users,
+  });
 
   return (
     <div className="space-y-6">
@@ -44,7 +30,7 @@ export function UsersPage() {
       {error && (
         <Alert variant="destructive">
           <CircleAlertIcon />
-          <AlertDescription>Couldn't load users: {error}</AlertDescription>
+          <AlertDescription>Couldn't load users: {apiErrorMessage(error)}</AlertDescription>
         </Alert>
       )}
 

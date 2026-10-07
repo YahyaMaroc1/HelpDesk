@@ -1,16 +1,23 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, Outlet } from "react-router";
 import { authClient } from "../lib/auth-client.ts";
 
 export function Layout() {
   const { data: session } = authClient.useSession();
+  const queryClient = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
     // The session store refetches and RequireAuth redirects to /login.
     const { error } = await authClient.signOut();
-    if (error) setSigningOut(false);
+    if (error) {
+      setSigningOut(false);
+      return;
+    }
+    // Drop cached API data so the next user signing in on this tab never sees it.
+    queryClient.clear();
   }
 
   return (

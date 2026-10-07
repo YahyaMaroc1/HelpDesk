@@ -26,6 +26,8 @@ client/   React 19 + TypeScript, bundled by Bun (no Vite)
   src/styles.css  Tailwind + shadcn theme (CSS variables, light and .dark)
   src/components/ui/  shadcn/ui components (generated; add with `bunx shadcn add <name>` from client/)
   src/lib/auth-client.ts  Better Auth React client (useSession, signIn, signOut)
+  src/lib/api.ts  shared axios instance (`api`, baseURL /api) and `apiErrorMessage(err)`
+  src/lib/query-client.ts  the TanStack Query `QueryClient` (provided in main.tsx; retry policy)
   src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
 server/   Express 5 + TypeScript, running on Bun
   src/index.ts   starts the server
@@ -101,9 +103,28 @@ Run from the project root:
 - `bun run start` – production: API + built client on :3000, with `NODE_ENV=production` (turns on rate limiting). Deployments must set `NODE_ENV=production` too, or login isn't rate-limited.
 - `bun run typecheck` – type-check all workspaces (client, server, e2e); run it after every change
 
+## Data fetching (client)
+
+**Always use axios + TanStack Query for API calls in the client.** Never call `fetch` directly and never load data with `useEffect` + `useState`.
+
+- **Reads:** `useQuery`. The `queryFn` calls axios through the shared `api` instance from `@/lib/api.ts` (baseURL `/api`, so paths are like `"/users"`) and passes the query's `signal` so the request is cancelled when it's no longer needed:
+  ```tsx
+  const { data: users, error } = useQuery({
+    queryKey: ["users"],
+    queryFn: async ({ signal }) => (await api.get<{ users: User[] }>("/users", { signal })).data.users,
+  });
+  ```
+  `pages/UsersPage.tsx` is the reference, including its loading, error and empty states.
+- **Writes:** `useMutation` with `api.post` / `api.patch` / `api.delete`, then `queryClient.invalidateQueries({ queryKey: [...] })` (from `useQueryClient()`) for every query the change affects.
+- **Query keys** start with the resource name: `["users"]`, `["users", id]`, `["tickets", filters]`.
+- **Errors:** show them with `apiErrorMessage(error)` from `@/lib/api.ts` (the API's `{ error }` message, else `HTTP <status>`, else the network error).
+- **One of each:** use the existing `api` instance and the `queryClient` from `@/lib/query-client.ts` (provided in `main.tsx`). Don't create another axios instance or `QueryClient`. Its retry policy (never retry 4xx; retry 5xx/network errors once) keeps errors fast; don't override it per query without a reason.
+- **Sign-out** calls `queryClient.clear()` (`Layout.tsx`) so cached data never leaks to the next user on the same tab. Keep this if sign-out moves.
+- **Exceptions:** Better Auth calls go through `authClient` (`useSession`, `signIn.email`, `signOut`), not axios or TanStack Query. `client/dev.ts` is the dev server's proxy, not app code, and keeps using `fetch`.
+
 ## Conventions
 
-- All API routes live under `/api`; the client calls relative `/api/...` URLs.
+- All API routes live under `/api`; the client calls them as described in "Data fetching" above.
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
 - Local imports include the `.ts`/`.tsx` extension. In the client, `@/*` maps to `client/src/*`.
 - shadcn/ui is set up manually (`client/components.json`, style `base-nova`, neutral) because the CLI can't detect a framework with Bun's bundler, so `init` fails but `add` works. `add` doesn't always install a component's npm dependencies (e.g. `@base-ui/react`): `bun add` them yourself if typecheck can't find them.
