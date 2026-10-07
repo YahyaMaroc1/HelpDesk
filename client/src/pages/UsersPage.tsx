@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleAlertIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { api, apiErrorMessage } from "@/lib/api.ts";
 
@@ -15,7 +16,7 @@ type User = {
 };
 
 export function UsersPage() {
-  const { data: users, error } = useQuery({
+  const { data: users, error, isPending } = useQuery({
     queryKey: ["users"],
     queryFn: async ({ signal }) => (await api.get<{ users: User[] }>("/users", { signal })).data.users,
   });
@@ -34,18 +35,11 @@ export function UsersPage() {
         </Alert>
       )}
 
-      {!error && !users && <p className="text-sm text-muted-foreground">Loading users…</p>}
+      {isPending && <UsersTableSkeleton />}
 
       {users && (
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
+          <UsersTableHeader />
           <TableBody>
             {users.length === 0 && (
               <TableRow>
@@ -69,6 +63,49 @@ export function UsersPage() {
           </TableBody>
         </Table>
       )}
+    </div>
+  );
+}
+
+function UsersTableHeader() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Name</TableHead>
+        <TableHead>Email</TableHead>
+        <TableHead>Role</TableHead>
+        <TableHead>Created</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+// Placeholder rows shaped like the real ones. Hidden from assistive tech, which gets the status text instead.
+function UsersTableSkeleton() {
+  return (
+    <div role="status">
+      <span className="sr-only">Loading users…</span>
+      <Table aria-hidden="true">
+        <UsersTableHeader />
+        <TableBody>
+          {Array.from({ length: 5 }, (_, i) => (
+            <TableRow key={i}>
+              <TableCell>
+                <Skeleton className="h-4 w-32" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-48" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-5 w-14 rounded-full" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-20" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
