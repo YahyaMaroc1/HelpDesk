@@ -2,13 +2,14 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { screen, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { api } from "@/lib/api.ts";
+import { Role } from "@/lib/role.ts";
 import { queryClient } from "@/lib/query-client.ts";
 import { renderWithQuery } from "@/test/render-with-query.tsx";
 import { UsersPage } from "./UsersPage.tsx";
 
 const users = [
-  { id: "1", name: "Ada Admin", email: "ada@example.com", role: "ADMIN", createdAt: "2026-01-15T10:00:00.000Z" },
-  { id: "2", name: "Alan Agent", email: "alan@example.com", role: "AGENT", createdAt: "2026-03-02T08:30:00.000Z" },
+  { id: "1", name: "Ada Admin", email: "ada@example.com", role: Role.ADMIN, createdAt: "2026-01-15T10:00:00.000Z" },
+  { id: "2", name: "Alan Agent", email: "alan@example.com", role: Role.AGENT, createdAt: "2026-03-02T08:30:00.000Z" },
 ];
 
 // Stubs GET /api/users on the shared axios instance.
@@ -49,6 +50,7 @@ describe("UsersPage", () => {
     renderWithQuery(<UsersPage />);
 
     expect(screen.getByRole("heading", { name: "Users" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New user" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading users…");
     // The skeleton table is aria-hidden, so assistive tech only gets the status text.
     expect(screen.queryByRole("table")).not.toBeInTheDocument();

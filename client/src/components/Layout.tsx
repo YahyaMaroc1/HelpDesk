@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, Outlet } from "react-router";
 import { authClient } from "../lib/auth-client.ts";
+import { Role } from "../lib/role.ts";
 
 export function Layout() {
   const { data: session } = authClient.useSession();
@@ -28,7 +29,7 @@ export function Layout() {
             <Link to="/" className="text-lg font-semibold">
               HelpDesk
             </Link>
-            {session?.user.role === "ADMIN" && (
+            {session?.user.role === Role.ADMIN && (
               <Link to="/users" className="text-sm font-medium text-gray-700 hover:text-gray-900">
                 Users
               </Link>

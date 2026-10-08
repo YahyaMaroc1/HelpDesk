@@ -3,6 +3,9 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { Role } from "../generated/prisma/enums.ts";
 import { prisma } from "./prisma.ts";
 
+// Password length limits, shared with code that validates passwords itself (e.g. POST /api/users).
+export const passwordLength = { min: 8, max: 128 } as const;
+
 // Sessions are stored in the database (no secondaryStorage, no cookie cache).
 // Reads BETTER_AUTH_SECRET and BETTER_AUTH_URL from the environment.
 export const auth = betterAuth({
@@ -10,7 +13,12 @@ export const auth = betterAuth({
   // No public sign-up: users are created server-side (see prisma/seed.ts).
   // minPasswordLength applies when a password is set or changed, not at sign-in. Code that hashes
   // passwords itself (prisma/seed.ts, future user management) must check it too.
-  emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
+  emailAndPassword: {
+    enabled: true,
+    disableSignUp: true,
+    minPasswordLength: passwordLength.min,
+    maxPasswordLength: passwordLength.max,
+  },
   user: {
     additionalFields: {
       // Values come from the Role enum in schema.prisma. input: false so clients can never set it.

@@ -43,7 +43,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 ## Phase 4 – User Management (Admin Only)
 
 - [x] 4.1 `GET /api/users`: list users
-- [ ] 4.2 `POST /api/users`: create an agent
+- [x] 4.2 `POST /api/users`: create an agent
 - [ ] 4.3 `PATCH /api/users/:id`: edit name/email, activate or deactivate
 - [ ] 4.4 Deactivating a user deletes their sessions so it takes effect immediately
 - [ ] 4.5 Validate request bodies and return clear errors (e.g. duplicate email)

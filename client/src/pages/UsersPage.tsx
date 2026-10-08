@@ -1,17 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlertIcon } from "lucide-react";
+import { CreateUserDialog } from "@/components/CreateUserDialog.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { api, apiErrorMessage } from "@/lib/api.ts";
+import { Role } from "@/lib/role.ts";
 
 // Shape of GET /api/users (server/src/routes/users.ts).
 type User = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "AGENT";
+  role: Role;
   createdAt: string;
 };
 
@@ -23,9 +25,12 @@ export function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="text-sm text-muted-foreground">Admins and agents who can sign in to HelpDesk.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="text-sm text-muted-foreground">Admins and agents who can sign in to HelpDesk.</p>
+        </div>
+        <CreateUserDialog />
       </div>
 
       {error && (
@@ -53,8 +58,8 @@ export function UsersPage() {
                 <TableCell className="font-medium">{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>
-                  <Badge variant={user.role === "ADMIN" ? "default" : "secondary"}>
-                    {user.role === "ADMIN" ? "Admin" : "Agent"}
+                  <Badge variant={user.role === Role.ADMIN ? "default" : "secondary"}>
+                    {user.role === Role.ADMIN ? "Admin" : "Agent"}
                   </Badge>
                 </TableCell>
                 <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>

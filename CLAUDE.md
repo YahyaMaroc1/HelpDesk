@@ -28,6 +28,7 @@ client/   React 19 + TypeScript, bundled by Bun (no Vite)
   src/lib/auth-client.ts  Better Auth React client (useSession, signIn, signOut)
   src/lib/api.ts  shared axios instance (`api`, baseURL /api) and `apiErrorMessage(err)`
   src/lib/query-client.ts  the TanStack Query `QueryClient` (provided in main.tsx; retry policy)
+  src/lib/role.ts  re-exports the Prisma `Role` enum for client code (compare `Role.ADMIN`, never `"ADMIN"`)
   src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
   src/**/*.test.tsx  component tests (bun test + React Testing Library); src/test/ has shared helpers
   happydom.ts, test-setup.ts, testing.d.ts  component test setup (preloaded via bunfig.toml)
@@ -57,7 +58,7 @@ Client components are tested with `bun test` + React Testing Library on happy-do
 - After writing or changing tests, run `bun run test` and `bun run typecheck` (the test runner doesn't type-check).
 
 **Setup** (already done; don't repeat it per file)
-- `client/bunfig.toml` preloads `happydom.ts` (registers the DOM; must load before Testing Library) and `test-setup.ts` (jest-dom matchers, `cleanup()` after each test). `client/testing.d.ts` types the matchers on `bun:test`'s `expect`.
+- `client/bunfig.toml` preloads `happydom.ts` (registers the DOM; must load before Testing Library) and `test-setup.ts` (jest-dom matchers, `cleanup()` after each test, and `BASE_UI_ANIMATIONS_DISABLED` so Base UI dialogs unmount on close instead of waiting for exit animations happy-dom never finishes). `client/testing.d.ts` types the matchers on `bun:test`'s `expect`.
 - `client/src/test/` holds shared test helpers, e.g. `renderWithQuery`.
 
 **Writing**
@@ -66,7 +67,7 @@ Client components are tested with `bun test` + React Testing Library on happy-do
 - Stub requests with `spyOn(api, "get")` (or `post`/`patch`/`delete`) on the shared `api` instance from `@/lib/api.ts`, resolving to `{ data }` or rejecting with an `AxiosError` that has a `response` (see `mockGetUsers` / `httpError` in the reference). Assert the path and arguments the component sent. Don't mock axios or TanStack Query themselves.
 - In `afterEach`, call `queryClient.clear()` (cached data would leak into the next test) and `mock.restore()` (undoes the spies).
 - Cover each state the component renders: pending (a never-settling promise), data, empty and error. Use 4xx errors for error states: 5xx and network errors are retried once with a delay, which slows the test.
-- Query the way users and assistive tech see the page: `getByRole` (with `name`), `getByText`, `within(...)`; avoid class names, test IDs and `container.querySelector`. Use `findBy*` to wait for data, and `queryBy*` with `.not.toBeInTheDocument()` for absence.
+- Query the way users and assistive tech see the page: `getByRole` (with `name`), `getByText`, `within(...)`; avoid class names, test IDs and `container.querySelector`. Use `findBy*` to wait for data, and `queryBy*` with `.not.toBeInTheDocument()` for absence. To wait for something to disappear, use `waitForElementToBeRemoved(el)`, not `waitFor(() => expect(...).not.toBeInTheDocument())`: each failed attempt makes Bun format a happy-dom element for the error message, which can take tens of seconds.
 - Simulate input with `fireEvent` from `@testing-library/react` (`user-event` isn't installed).
 - Build locale-dependent expectations the way the component does (e.g. `new Date(x).toLocaleDateString()`), not hard-coded strings.
 
@@ -100,8 +101,8 @@ Better Auth with email/password only. Sessions live in the Postgres `session` ta
 - `GET /api/me` returns the current user and is the example of a protected route.
 
 **Users and roles**
-- `User.role` is a Prisma `Role` enum (`ADMIN`, `AGENT`; default `AGENT`). It's registered in `auth.ts` as an `additionalField` with `input: false`, so it's on the session user but clients can never set it.
-- Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`. Create users server-side the way `prisma/seed.ts` does: `(await auth.$context).internalAdapter.createUser(...)`, then `linkAccount({ providerId: "credential", accountId: user.id, password: await ctx.password.hash(pw) })`, lowercasing the email. Hashing directly skips Better Auth's password-length check (`minPasswordLength: 12`), so check `ctx.password.config` yourself, as the seed does.
+- `User.role` is a Prisma `Role` enum (`ADMIN`, `AGENT`; default `AGENT`). It's registered in `auth.ts` as an `additionalField` with `input: false`, so it's on the session user but clients can never set it. **Never hard-code role strings** (`"ADMIN"`, `"AGENT"`): use the enum. On the server, `import { Role } from "../generated/prisma/enums.ts"` and set or compare `Role.AGENT` / `Role.ADMIN` (e.g. `POST /api/users` creates users with `role: Role.AGENT`). In the client, import the same enum from `@/lib/role.ts` (a re-export of the generated file) for comparisons like `session.user.role === Role.ADMIN` and for typing API data (`role: Role`).
+- Public sign-up is disabled (`disableSignUp`), which also blocks `auth.api.signUpEmail`. Create users server-side the way `prisma/seed.ts` and `POST /api/users` (`routes/users.ts`) do: `(await auth.$context).internalAdapter.createUser(...)`, then `linkAccount({ providerId: "credential", accountId: user.id, password: await ctx.password.hash(pw) })`, lowercasing the email. Hashing directly skips Better Auth's password-length check (8–128 characters, from `passwordLength` in `auth.ts`), so check it yourself: the seed reads `ctx.password.config`; routes use `passwordLength` in their Zod schema.
 - `bun run db:seed` (from `server/`) creates the admin from `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `server/.env`, and skips it if it already exists.
 - Better Auth's tables (`user`, `session`, `account`, `verification`) are generated with `bunx auth@latest generate --config src/lib/auth.ts --output prisma/schema.prisma`. Re-run it after changing the auth config or plugins, then `bun run db:migrate`. The generator writes `role` as `String`, so restore the `Role` enum before migrating.
 
@@ -151,6 +152,7 @@ Run from the project root:
 
 - All API routes live under `/api`; the client calls them as described in "Data fetching" above.
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
+- **Validate data with Zod** (v4, `import { z } from "zod"`) on both sides. Client forms: React Hook Form + `zodResolver` (`pages/LoginPage.tsx` is the reference form). Server: give every route that takes input (body, params, query) a Zod schema and `safeParse` it before use; on failure answer 400 `{ error: parsed.error.issues[0]?.message }` and use only `parsed.data` afterwards. Put the user-facing message on each rule, and on `z.string({ error })` so a missing or wrong-typed field gets it too. Keep a form's schema and its route's schema in sync (same rules and messages): `components/CreateUserDialog.tsx` and `routes/users.ts` are the reference pair. Don't hand-roll validation or add another validation library.
 - Local imports include the `.ts`/`.tsx` extension. In the client, `@/*` maps to `client/src/*`.
 - shadcn/ui is set up manually (`client/components.json`, style `base-nova`, neutral) because the CLI can't detect a framework with Bun's bundler, so `init` fails but `add` works. `add` doesn't always install a component's npm dependencies (e.g. `@base-ui/react`): `bun add` them yourself if typecheck can't find them.
 - Build UI from shadcn components and theme tokens (`bg-background`, `text-muted-foreground`, `text-destructive`, …), not raw Tailwind palette colors like `gray-500`. `pages/LoginPage.tsx` is the reference form: React Hook Form + Zod with `Field`/`FieldLabel`/`Input`/`FieldError`, plus an `Alert` for server errors. `Layout.tsx` and `HomePage.tsx` still use the old raw styling.

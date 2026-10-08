@@ -25,7 +25,7 @@ export const testAdmin = {
   password: "test-admin-password",
 };
 
-// AGENT users created by server/prisma/seed-e2e.ts. Passwords must be at least 12 characters.
+// AGENT users created by server/prisma/seed-e2e.ts. Passwords must be at least 8 characters.
 // testAgent is only read by tests (its storageState is shared). testEscalationAgent is for the test that
 // tries to change its own role, so a regression there can't affect other tests.
 export const testAgent = {
