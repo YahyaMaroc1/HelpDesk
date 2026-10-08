@@ -1,3 +1,7 @@
 # Tailwind for the dev server's HTML import (dev.ts). Production builds add the plugin in build.ts.
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
+
+# Component tests (bun test, from client/): a happy-dom DOM, then Testing Library setup.
+[test]
+preload = ["./happydom.ts", "./test-setup.ts"]

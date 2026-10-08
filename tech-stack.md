@@ -25,6 +25,7 @@
 ## Testing
 
 * Playwright for end-to-end tests, against a separate `helpdesk_test` database
+* bun test + React Testing Library (with happy-dom) for client component tests
 
 ## AI
 

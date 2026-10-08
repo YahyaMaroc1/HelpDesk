@@ -8,5 +8,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "dev.ts", "build.ts"]
+  "include": ["src", "dev.ts", "build.ts", "happydom.ts", "test-setup.ts", "testing.d.ts"]
 }

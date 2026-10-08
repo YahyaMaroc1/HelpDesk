@@ -29,6 +29,8 @@ client/   React 19 + TypeScript, bundled by Bun (no Vite)
   src/lib/api.ts  shared axios instance (`api`, baseURL /api) and `apiErrorMessage(err)`
   src/lib/query-client.ts  the TanStack Query `QueryClient` (provided in main.tsx; retry policy)
   src/components/RequireAuth.tsx  protected layout route; redirects to /login without a session
+  src/**/*.test.tsx  component tests (bun test + React Testing Library); src/test/ has shared helpers
+  happydom.ts, test-setup.ts, testing.d.ts  component test setup (preloaded via bunfig.toml)
 server/   Express 5 + TypeScript, running on Bun
   src/index.ts   starts the server
   src/app.ts     Express app, routes, error handler, serves client/dist in production (and NODE_ENV=test)
@@ -44,6 +46,29 @@ e2e/      Playwright end-to-end tests (runs on Node, not Bun)
   test-env.ts  loads e2e/.env, test port/URL, the seeded test admin (`testAdmin`)
   tests/       *.spec.ts files
 ```
+
+## Component tests
+
+Client components are tested with `bun test` + React Testing Library on happy-dom, with the API stubbed (no server or database). Use them for a component's states and rendering (loading, error, empty, data, form validation); use Playwright e2e tests for real flows through the server, auth and roles. `client/src/pages/UsersPage.test.tsx` is the reference.
+
+**Running**
+- `bun run test` from the root, or from `client/`: `bun run test` (all once), `bun run test:watch` (reruns on save, while writing tests), `bun test UsersPage` (files whose path matches), `bun test -t "empty state"` (tests whose name matches).
+- Never run `bun test` from the root: it would also pick up the Playwright specs in `e2e/`.
+- After writing or changing tests, run `bun run test` and `bun run typecheck` (the test runner doesn't type-check).
+
+**Setup** (already done; don't repeat it per file)
+- `client/bunfig.toml` preloads `happydom.ts` (registers the DOM; must load before Testing Library) and `test-setup.ts` (jest-dom matchers, `cleanup()` after each test). `client/testing.d.ts` types the matchers on `bun:test`'s `expect`.
+- `client/src/test/` holds shared test helpers, e.g. `renderWithQuery`.
+
+**Writing**
+- Put `Name.test.tsx` next to the component. Import `describe`/`test`/`expect`/`spyOn`/`mock` from `bun:test` (not Jest or Vitest) and queries from `@testing-library/react`.
+- Render with `renderWithQuery(<Page />)` from `@/test/render-with-query.tsx`; it wraps the component in the app's real `queryClient` (with its retry policy). Components that use React Router (`Link`, `useNavigate`, …) also need a `<MemoryRouter>` around them.
+- Stub requests with `spyOn(api, "get")` (or `post`/`patch`/`delete`) on the shared `api` instance from `@/lib/api.ts`, resolving to `{ data }` or rejecting with an `AxiosError` that has a `response` (see `mockGetUsers` / `httpError` in the reference). Assert the path and arguments the component sent. Don't mock axios or TanStack Query themselves.
+- In `afterEach`, call `queryClient.clear()` (cached data would leak into the next test) and `mock.restore()` (undoes the spies).
+- Cover each state the component renders: pending (a never-settling promise), data, empty and error. Use 4xx errors for error states: 5xx and network errors are retried once with a delay, which slows the test.
+- Query the way users and assistive tech see the page: `getByRole` (with `name`), `getByText`, `within(...)`; avoid class names, test IDs and `container.querySelector`. Use `findBy*` to wait for data, and `queryBy*` with `.not.toBeInTheDocument()` for absence.
+- Simulate input with `fireEvent` from `@testing-library/react` (`user-event` isn't installed).
+- Build locale-dependent expectations the way the component does (e.g. `new Date(x).toLocaleDateString()`), not hard-coded strings.
 
 ## End-to-end tests
 

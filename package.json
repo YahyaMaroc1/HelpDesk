@@ -7,6 +7,7 @@
     "build": "bun --filter client build",
     "start": "bun --filter server start",
     "typecheck": "bun --filter '*' typecheck",
+    "test": "bun run --cwd client test",
     "test:e2e": "bun run --cwd e2e test"
   }
 }
