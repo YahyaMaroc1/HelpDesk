@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitForElementToBeRemoved, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { api } from "@/lib/api.ts";
 import { Role } from "@/lib/role.ts";
@@ -64,13 +64,15 @@ describe("UsersPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     const headers = within(table).getAllByRole("columnheader").map((th) => th.textContent);
-    expect(headers).toEqual(["Name", "Email", "Role", "Created"]);
+    expect(headers).toEqual(["Name", "Email", "Role", "Created", "Actions"]);
 
     const [, adaRow, alanRow] = within(table).getAllByRole("row");
     const adaCells = within(adaRow!).getAllByRole("cell").map((td) => td.textContent);
-    expect(adaCells).toEqual(["Ada Admin", "ada@example.com", "Admin", new Date(users[0]!.createdAt).toLocaleDateString()]);
+    expect(adaCells).toEqual(["Ada Admin", "ada@example.com", "Admin", new Date(users[0]!.createdAt).toLocaleDateString(), ""]);
+    expect(within(adaRow!).getByRole("button", { name: "Edit Ada Admin" })).toBeInTheDocument();
     const alanCells = within(alanRow!).getAllByRole("cell").map((td) => td.textContent);
-    expect(alanCells).toEqual(["Alan Agent", "alan@example.com", "Agent", new Date(users[1]!.createdAt).toLocaleDateString()]);
+    expect(alanCells).toEqual(["Alan Agent", "alan@example.com", "Agent", new Date(users[1]!.createdAt).toLocaleDateString(), ""]);
+    expect(within(alanRow!).getByRole("button", { name: "Edit Alan Agent" })).toBeInTheDocument();
   });
 
   test("shows an empty state when there are no users", async () => {
@@ -155,6 +157,89 @@ describe("UsersPage", () => {
 
       // A dismissal would be synchronous (see above), so the dialog would already be gone.
       expect(dialog).toBeInTheDocument();
+    });
+
+    test("closes and reloads the users after a user is created", async () => {
+      const get = mockGetUsers(ok({ users }));
+      spyOn(api, "post").mockImplementation((() => ok({ user: {} })) as typeof api.post);
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      fireEvent.click(screen.getByRole("button", { name: "New user" }));
+      const dialog = await screen.findByRole("dialog", { name: "New user" });
+
+      fireEvent.input(within(dialog).getByLabelText("Name"), { target: { value: "Grace Hopper" } });
+      fireEvent.input(within(dialog).getByLabelText("Email"), { target: { value: "grace@example.com" } });
+      fireEvent.input(within(dialog).getByLabelText("Password"), { target: { value: "12345678" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create user" }));
+
+      await waitForElementToBeRemoved(dialog);
+      expect(get).toHaveBeenCalledTimes(2);
+    });
+
+    test("starts with an empty form and no error when reopened", async () => {
+      spyOn(api, "post").mockImplementation((() => httpError(409, { error: "A user with this email already exists" })) as typeof api.post);
+      const dialog = await openDialog();
+      fireEvent.input(within(dialog).getByLabelText("Name"), { target: { value: "Grace Hopper" } });
+      fireEvent.input(within(dialog).getByLabelText("Email"), { target: { value: "ada@example.com" } });
+      fireEvent.input(within(dialog).getByLabelText("Password"), { target: { value: "12345678" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create user" }));
+      await within(dialog).findByText("A user with this email already exists");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      expect(dialog).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "New user" }));
+
+      const reopened = await screen.findByRole("dialog", { name: "New user" });
+      expect(within(reopened).getByLabelText("Name")).toHaveValue("");
+      expect(within(reopened).getByLabelText("Email")).toHaveValue("");
+      expect(within(reopened).queryByText("A user with this email already exists")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Edit user dialog", () => {
+    async function openEdit(name: string) {
+      fireEvent.click(screen.getByRole("button", { name: `Edit ${name}` }));
+      return screen.findByRole("dialog", { name: "Edit user" });
+    }
+
+    test("shows the clicked row's user each time, and an empty form for a new user afterwards", async () => {
+      mockGetUsers(ok({ users }));
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+
+      let dialog = await openEdit("Alan Agent");
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("Alan Agent");
+      fireEvent.input(within(dialog).getByLabelText("Name"), { target: { value: "Unsaved edit" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      dialog = await openEdit("Ada Admin");
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("Ada Admin");
+      expect(within(dialog).getByLabelText("Email")).toHaveValue("ada@example.com");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      dialog = await openEdit("Alan Agent");
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("Alan Agent");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "New user" }));
+      dialog = await screen.findByRole("dialog", { name: "New user" });
+      expect(within(dialog).getByLabelText("Name")).toHaveValue("");
+      expect(within(dialog).getByLabelText("Password")).toBeInTheDocument();
+    });
+
+    test("closes and reloads the users after saving", async () => {
+      const get = mockGetUsers(ok({ users }));
+      const patch = spyOn(api, "patch").mockImplementation((() => ok({ user: {} })) as typeof api.patch);
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      const dialog = await openEdit("Alan Agent");
+
+      fireEvent.input(within(dialog).getByLabelText("Name"), { target: { value: "Alan Turing" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+      await waitForElementToBeRemoved(dialog);
+      expect(patch.mock.calls[0]).toEqual(["/users/2", { name: "Alan Turing", email: "alan@example.com" }]);
+      expect(get).toHaveBeenCalledTimes(2);
     });
   });
 });

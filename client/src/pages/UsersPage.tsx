@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlertIcon } from "lucide-react";
-import { CreateUserDialog } from "@/components/CreateUserDialog.tsx";
+import { CircleAlertIcon, PencilIcon, PlusIcon } from "lucide-react";
+import { useState } from "react";
+import { UserForm, type EditableUser } from "@/components/UserForm.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Dialog, DialogContent } from "@/components/ui/dialog.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { api, apiErrorMessage } from "@/lib/api.ts";
@@ -22,6 +25,9 @@ export function UsersPage() {
     queryKey: ["users"],
     queryFn: async ({ signal }) => (await api.get<{ users: User[] }>("/users", { signal })).data.users,
   });
+  // One dialog for creating (user: null) and editing. Closing keeps `user`, so the form doesn't switch to
+  // "New user" while the dialog animates out.
+  const [dialog, setDialog] = useState<{ open: boolean; user: EditableUser | null }>({ open: false, user: null });
 
   return (
     <div className="space-y-6">
@@ -30,8 +36,17 @@ export function UsersPage() {
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="text-sm text-muted-foreground">Admins and agents who can sign in to HelpDesk.</p>
         </div>
-        <CreateUserDialog />
+        <Button onClick={() => setDialog({ open: true, user: null })}>
+          <PlusIcon />
+          New user
+        </Button>
       </div>
+
+      <Dialog open={dialog.open} onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}>
+        <DialogContent>
+          <UserForm user={dialog.user} onSaved={() => setDialog((d) => ({ ...d, open: false }))} />
+        </DialogContent>
+      </Dialog>
 
       {error && (
         <Alert variant="destructive">
@@ -48,7 +63,7 @@ export function UsersPage() {
           <TableBody>
             {users.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   No users yet.
                 </TableCell>
               </TableRow>
@@ -63,6 +78,16 @@ export function UsersPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Edit ${user.name}`}
+                    onClick={() => setDialog({ open: true, user })}
+                  >
+                    <PencilIcon />
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -80,6 +105,9 @@ function UsersTableHeader() {
         <TableHead>Email</TableHead>
         <TableHead>Role</TableHead>
         <TableHead>Created</TableHead>
+        <TableHead className="w-0">
+          <span className="sr-only">Actions</span>
+        </TableHead>
       </TableRow>
     </TableHeader>
   );
@@ -106,6 +134,9 @@ function UsersTableSkeleton() {
               </TableCell>
               <TableCell>
                 <Skeleton className="h-4 w-20" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="ml-auto size-7" />
               </TableCell>
             </TableRow>
           ))}
