@@ -54,20 +54,20 @@ describe("CreateUserDialog", () => {
 
     submit();
 
-    expect(await screen.findByText("Name must be at least 2 characters")).toBeInTheDocument();
+    expect(await screen.findByText("Name must be at least 3 characters")).toBeInTheDocument();
     expect(screen.getByText("Email is required")).toBeInTheDocument();
     expect(screen.getByText("Password must be at least 8 characters")).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
   });
 
-  test("rejects a 1-character name, an invalid email and a 7-character password", async () => {
+  test("rejects a 2-character name, an invalid email and a 7-character password", async () => {
     const post = mockPostUser(() => Promise.resolve({ data: {} }));
     await openDialog();
 
-    fillForm({ name: "A", email: "not-an-email", password: "1234567" });
+    fillForm({ name: "Ab", email: "not-an-email", password: "1234567" });
     submit();
 
-    expect(await screen.findByText("Name must be at least 2 characters")).toBeInTheDocument();
+    expect(await screen.findByText("Name must be at least 3 characters")).toBeInTheDocument();
     expect(screen.getByText("Enter a valid email address")).toBeInTheDocument();
     expect(screen.getByText("Password must be at least 8 characters")).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");

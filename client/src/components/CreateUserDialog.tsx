@@ -22,7 +22,7 @@ import { api, apiErrorMessage } from "@/lib/api.ts";
 
 // Mirrors the checks in POST /api/users (server/src/routes/users.ts).
 const createUserSchema = z.object({
-  name: z.string().trim().min(2, "Name must be at least 2 characters"),
+  name: z.string().trim().min(3, "Name must be at least 3 characters"),
   email: z.string().trim().min(1, "Email is required").pipe(z.email("Enter a valid email address")),
   password: z.string().min(8, "Password must be at least 8 characters"),
 });

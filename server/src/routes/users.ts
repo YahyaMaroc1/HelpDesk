@@ -14,7 +14,7 @@ const userFields = { id: true, name: true, email: true, role: true, createdAt: t
 // a missing or non-string field. Better Auth stores emails lowercased.
 const passwordMessage = `Password must be ${passwordLength.min}-${passwordLength.max} characters`;
 const createUserSchema = z.object({
-  name: z.string({ error: "Name must be at least 2 characters" }).trim().min(2, "Name must be at least 2 characters"),
+  name: z.string({ error: "Name must be at least 3 characters" }).trim().min(3, "Name must be at least 3 characters"),
   email: z
     .string({ error: "Enter a valid email address" })
     .trim()

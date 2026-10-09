@@ -206,13 +206,13 @@ test.describe("POST /api/users", () => {
   test.describe("admin", () => {
     test.use({ storageState: adminAuthFile });
 
-    test("rejects a name shorter than 2 characters (after trimming)", async ({ request }) => {
-      for (const name of ["", "a", "  a  ", "   "]) {
+    test("rejects a name shorter than 3 characters (after trimming)", async ({ request }) => {
+      for (const name of ["", "a", "ab", "  ab  ", "   "]) {
         const response = await request.post("/api/users", {
           data: { name, email: uniqueEmail("short-name"), password: validPassword },
         });
         expect(response.status(), `name ${JSON.stringify(name)}`).toBe(400);
-        expect(await response.json()).toEqual({ error: "Name must be at least 2 characters" });
+        expect(await response.json()).toEqual({ error: "Name must be at least 3 characters" });
       }
     });
 
@@ -223,7 +223,7 @@ test.describe("POST /api/users", () => {
       ]) {
         const response = await request.post("/api/users", { data });
         expect(response.status()).toBe(400);
-        expect(await response.json()).toEqual({ error: "Name must be at least 2 characters" });
+        expect(await response.json()).toEqual({ error: "Name must be at least 3 characters" });
       }
     });
 
@@ -363,7 +363,7 @@ test.describe("Create user dialog", () => {
     const dialog = page.getByRole("dialog", { name: "New user" });
     await dialog.getByRole("button", { name: "Create user" }).click();
 
-    await expect(dialog.getByText("Name must be at least 2 characters")).toBeVisible();
+    await expect(dialog.getByText("Name must be at least 3 characters")).toBeVisible();
     await expect(dialog.getByText("Email is required")).toBeVisible();
     await expect(dialog.getByText("Password must be at least 8 characters")).toBeVisible();
     await expect(dialog).toBeVisible();
@@ -378,12 +378,12 @@ test.describe("Create user dialog", () => {
     const email = uniqueEmail("invalid-ui");
     const dialog = page.getByRole("dialog", { name: "New user" });
 
-    await dialog.getByLabel("Name").fill("a");
+    await dialog.getByLabel("Name").fill("ab");
     await dialog.getByLabel("Email").fill("not-an-email");
     await dialog.getByLabel("Password").fill("1234567");
     await dialog.getByRole("button", { name: "Create user" }).click();
 
-    await expect(dialog.getByText("Name must be at least 2 characters")).toBeVisible();
+    await expect(dialog.getByText("Name must be at least 3 characters")).toBeVisible();
     await expect(dialog.getByText("Enter a valid email address")).toBeVisible();
     await expect(dialog.getByText("Password must be at least 8 characters")).toBeVisible();
     expect(posts).toBe(0);
