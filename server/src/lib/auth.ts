@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError } from "better-auth/api";
 import { Role } from "../generated/prisma/enums.ts";
 import { prisma } from "./prisma.ts";
 
@@ -23,6 +24,20 @@ export const auth = betterAuth({
     additionalFields: {
       // Values come from the Role enum in schema.prisma. input: false so clients can never set it.
       role: { type: Object.values(Role), required: false, defaultValue: Role.AGENT, input: false },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        // Soft-deleted users can't sign in. This runs after the password check, and answers exactly like a wrong
+        // password (Better Auth's INVALID_EMAIL_OR_PASSWORD), so it doesn't reveal that the account exists.
+        before: async (session) => {
+          const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { deletedAt: true } });
+          if (user?.deletedAt) {
+            throw new APIError("UNAUTHORIZED", { message: "Invalid email or password", code: "INVALID_EMAIL_OR_PASSWORD" });
+          }
+        },
+      },
     },
   },
   // The client dev server proxies /api but forwards the browser's Origin header.

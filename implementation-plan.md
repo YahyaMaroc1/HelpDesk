@@ -50,6 +50,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [x] 4.6 Client: users page with a table of users
 - [ ] 4.7 Client: create-agent form and edit/deactivate actions
 - [x] 4.8 Client: hide the users page from agents in the navigation
+- [x] 4.9 Soft-delete agents (`DELETE /api/users/:id` + confirmation on the users page); admins can't be deleted
 
 **Done when:** the admin can create an agent, the agent can log in, and deactivating the agent logs them out.
 

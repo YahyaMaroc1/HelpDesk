@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlertIcon, PencilIcon, PlusIcon } from "lucide-react";
+import { CircleAlertIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
+import { DeleteUserConfirm } from "@/components/DeleteUserConfirm.tsx";
 import { UserForm, type EditableUser } from "@/components/UserForm.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
+import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Dialog, DialogContent } from "@/components/ui/dialog.tsx";
@@ -20,14 +22,22 @@ type User = {
   createdAt: string;
 };
 
+// What the page's dialog is for.
+type UserAction = { kind: "create" } | { kind: "edit"; user: EditableUser } | { kind: "delete"; user: EditableUser };
+
 export function UsersPage() {
   const { data: users, error, isPending } = useQuery({
     queryKey: ["users"],
     queryFn: async ({ signal }) => (await api.get<{ users: User[] }>("/users", { signal })).data.users,
   });
-  // One dialog for creating (user: null) and editing. Closing keeps `user`, so the form doesn't switch to
-  // "New user" while the dialog animates out.
-  const [dialog, setDialog] = useState<{ open: boolean; user: EditableUser | null }>({ open: false, user: null });
+  // Which dialog is showing: the user form (create/edit) or the delete confirmation. Closing only clears `open`
+  // and keeps `action`, so the dialog's content doesn't change while it animates out.
+  const [dialog, setDialog] = useState<{ open: boolean; action: UserAction }>({
+    open: false,
+    action: { kind: "create" },
+  });
+  const { action } = dialog;
+  const setOpen = (open: boolean) => setDialog((d) => ({ ...d, open }));
 
   return (
     <div className="space-y-6">
@@ -36,17 +46,25 @@ export function UsersPage() {
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="text-sm text-muted-foreground">Admins and agents who can sign in to HelpDesk.</p>
         </div>
-        <Button onClick={() => setDialog({ open: true, user: null })}>
+        <Button onClick={() => setDialog({ open: true, action: { kind: "create" } })}>
           <PlusIcon />
           New user
         </Button>
       </div>
 
-      <Dialog open={dialog.open} onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}>
+      <Dialog open={dialog.open && action.kind !== "delete"} onOpenChange={setOpen}>
         <DialogContent>
-          <UserForm user={dialog.user} onSaved={() => setDialog((d) => ({ ...d, open: false }))} />
+          {action.kind !== "delete" && (
+            <UserForm user={action.kind === "edit" ? action.user : null} onSaved={() => setOpen(false)} />
+          )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={dialog.open && action.kind === "delete"} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          {action.kind === "delete" && <DeleteUserConfirm user={action.user} onDeleted={() => setOpen(false)} />}
+        </AlertDialogContent>
+      </AlertDialog>
 
       {error && (
         <Alert variant="destructive">
@@ -78,15 +96,29 @@ export function UsersPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Edit ${user.name}`}
-                    onClick={() => setDialog({ open: true, user })}
-                  >
-                    <PencilIcon />
-                  </Button>
+                <TableCell>
+                  {/* Left-aligned so the edit buttons line up whether or not a row has a delete button. */}
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Edit ${user.name}`}
+                      onClick={() => setDialog({ open: true, action: { kind: "edit", user } })}
+                    >
+                      <PencilIcon />
+                    </Button>
+                    {/* Admins can't be deleted (the API refuses too). */}
+                    {user.role !== Role.ADMIN && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${user.name}`}
+                        onClick={() => setDialog({ open: true, action: { kind: "delete", user } })}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -136,7 +168,10 @@ function UsersTableSkeleton() {
                 <Skeleton className="h-4 w-20" />
               </TableCell>
               <TableCell>
-                <Skeleton className="ml-auto size-7" />
+                <div className="flex gap-1">
+                  <Skeleton className="size-7" />
+                  <Skeleton className="size-7" />
+                </div>
               </TableCell>
             </TableRow>
           ))}

@@ -70,9 +70,11 @@ describe("UsersPage", () => {
     const adaCells = within(adaRow!).getAllByRole("cell").map((td) => td.textContent);
     expect(adaCells).toEqual(["Ada Admin", "ada@example.com", "Admin", new Date(users[0]!.createdAt).toLocaleDateString(), ""]);
     expect(within(adaRow!).getByRole("button", { name: "Edit Ada Admin" })).toBeInTheDocument();
+    expect(within(adaRow!).queryByRole("button", { name: /^Delete/ })).not.toBeInTheDocument();
     const alanCells = within(alanRow!).getAllByRole("cell").map((td) => td.textContent);
     expect(alanCells).toEqual(["Alan Agent", "alan@example.com", "Agent", new Date(users[1]!.createdAt).toLocaleDateString(), ""]);
     expect(within(alanRow!).getByRole("button", { name: "Edit Alan Agent" })).toBeInTheDocument();
+    expect(within(alanRow!).getByRole("button", { name: "Delete Alan Agent" })).toBeInTheDocument();
   });
 
   test("shows an empty state when there are no users", async () => {
@@ -240,6 +242,69 @@ describe("UsersPage", () => {
       await waitForElementToBeRemoved(dialog);
       expect(patch.mock.calls[0]).toEqual(["/users/2", { name: "Alan Turing", email: "alan@example.com" }]);
       expect(get).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("Delete user confirmation", () => {
+    async function openDelete() {
+      fireEvent.click(screen.getByRole("button", { name: "Delete Alan Agent" }));
+      return screen.findByRole("alertdialog", { name: "Delete user?" });
+    }
+
+    test("asks about the clicked row's user", async () => {
+      mockGetUsers(ok({ users }));
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+
+      const dialog = await openDelete();
+
+      expect(dialog).toHaveAccessibleDescription("Alan Agent (alan@example.com) will be signed out and can no longer sign in.");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    test("Cancel closes it without deleting anyone", async () => {
+      mockGetUsers(ok({ users }));
+      const del = spyOn(api, "delete");
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      const dialog = await openDelete();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect(dialog).not.toBeInTheDocument();
+      expect(del).not.toHaveBeenCalled();
+      expect(screen.getByRole("cell", { name: "Alan Agent" })).toBeInTheDocument();
+    });
+
+    test("closes and reloads the users after deleting", async () => {
+      const get = spyOn(api, "get")
+        .mockImplementationOnce((() => ok({ users })) as typeof api.get)
+        .mockImplementation((() => ok({ users: [users[0]] })) as typeof api.get);
+      const del = spyOn(api, "delete").mockImplementation((() => ok("")) as typeof api.delete);
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      const dialog = await openDelete();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+      await waitForElementToBeRemoved(dialog);
+      expect(del.mock.calls[0]).toEqual(["/users/2"]);
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole("cell", { name: "Alan Agent" })).not.toBeInTheDocument();
+    });
+
+    test("the form dialog still opens for New user after a delete confirmation", async () => {
+      mockGetUsers(ok({ users }));
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      const dialog = await openDelete();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "New user" }));
+
+      const form = await screen.findByRole("dialog", { name: "New user" });
+      expect(within(form).getByLabelText("Name")).toHaveValue("");
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     });
   });
 });

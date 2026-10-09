@@ -31,8 +31,22 @@ const createUserSchema = z.object({
 const updateUserSchema = createUserSchema.extend({ password: passwordSchema.optional() });
 const userParamsSchema = z.object({ id: z.string().min(1, "User not found") });
 
+// Why `email` can't be used, or null if it's free. Soft-deleted users keep their email, so it stays taken.
+async function emailConflict(email: string, exceptUserId?: string) {
+  const existing = await prisma.user.findFirst({
+    where: { email, ...(exceptUserId && { NOT: { id: exceptUserId } }) },
+    select: { deletedAt: true },
+  });
+  if (!existing) return null;
+  return existing.deletedAt ? "This email belongs to a deleted user" : "A user with this email already exists";
+}
+
 usersRouter.get("/", async (_req, res) => {
-  const users = await prisma.user.findMany({ select: userFields, orderBy: { createdAt: "asc" } });
+  const users = await prisma.user.findMany({
+    where: { deletedAt: null },
+    select: userFields,
+    orderBy: { createdAt: "asc" },
+  });
   res.json({ users });
 });
 
@@ -46,8 +60,9 @@ usersRouter.post("/", async (req, res) => {
   }
   const { name, email, password } = parsed.data;
 
-  if (await prisma.user.findUnique({ where: { email } })) {
-    res.status(409).json({ error: "A user with this email already exists" });
+  const conflict = await emailConflict(email);
+  if (conflict) {
+    res.status(409).json({ error: conflict });
     return;
   }
 
@@ -81,12 +96,13 @@ usersRouter.patch("/:id", async (req, res) => {
   const { id } = params.data;
   const { name, email, password } = parsed.data;
 
-  if (!(await prisma.user.findUnique({ where: { id }, select: { id: true } }))) {
+  if (!(await prisma.user.findFirst({ where: { id, deletedAt: null }, select: { id: true } }))) {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  if (await prisma.user.findFirst({ where: { email, NOT: { id } }, select: { id: true } })) {
-    res.status(409).json({ error: "A user with this email already exists" });
+  const conflict = await emailConflict(email, id);
+  if (conflict) {
+    res.status(409).json({ error: conflict });
     return;
   }
 
@@ -108,4 +124,31 @@ usersRouter.patch("/:id", async (req, res) => {
   }
   const user = await prisma.user.findUniqueOrThrow({ where: { id }, select: userFields });
   res.json({ user });
+});
+
+// Soft-deletes a user: they're hidden from the list, signed out everywhere, and can no longer sign in (see the
+// session hook in lib/auth.ts). The row stays, so their email remains taken. Admins can't be deleted.
+usersRouter.delete("/:id", async (req, res) => {
+  const params = userParamsSchema.safeParse(req.params);
+  if (!params.success) {
+    res.status(404).json({ error: params.error.issues[0]?.message ?? "User not found" });
+    return;
+  }
+  const { id } = params.data;
+
+  const user = await prisma.user.findFirst({ where: { id, deletedAt: null }, select: { role: true } });
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (user.role === Role.ADMIN) {
+    res.status(403).json({ error: "Admins can't be deleted" });
+    return;
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({ where: { id }, data: { deletedAt: new Date() } }),
+    prisma.session.deleteMany({ where: { userId: id } }),
+  ]);
+  res.status(204).end();
 });

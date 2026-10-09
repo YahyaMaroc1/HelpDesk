@@ -23,6 +23,8 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  // Set when an admin soft-deletes the user: hidden from the users list and can't sign in.
+  deletedAt     DateTime?
   sessions      Session[]
   accounts      Account[]
 
