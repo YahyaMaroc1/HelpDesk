@@ -74,6 +74,71 @@ describe("CreateUserDialog", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  test("rejects a name and email that are only whitespace", async () => {
+    const post = mockPostUser(() => Promise.resolve({ data: {} }));
+    await openDialog();
+
+    fillForm({ name: "     ", email: "   ", password: "12345678" });
+    submit();
+
+    expect(await screen.findByText("Name must be at least 3 characters")).toBeInTheDocument();
+    expect(screen.getByText("Email is required")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  test("counts the name's length after trimming", async () => {
+    const post = mockPostUser(() => Promise.resolve({ data: {} }));
+    await openDialog();
+
+    fillForm({ name: "  Ab  ", email: "grace@example.com", password: "12345678" });
+    submit();
+
+    expect(await screen.findByText("Name must be at least 3 characters")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  test("flags only the invalid field and links its error to it", async () => {
+    await openDialog();
+
+    fillForm({ name: "Grace Hopper", email: "grace@example.com", password: "short" });
+    submit();
+
+    const error = await screen.findByText("Password must be at least 8 characters");
+    const password = screen.getByLabelText("Password");
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(password).toHaveAccessibleDescription("Password must be at least 8 characters");
+    expect(error).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByLabelText("Email")).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText("Name must be at least 3 characters")).not.toBeInTheDocument();
+    expect(screen.queryByText("Enter a valid email address")).not.toBeInTheDocument();
+  });
+
+  test("clears a field's error once it is corrected", async () => {
+    await openDialog();
+
+    fillForm({ name: "Ab", email: "grace@example.com", password: "12345678" });
+    submit();
+    const error = await screen.findByText("Name must be at least 3 characters");
+
+    // After a submit, React Hook Form revalidates on every change.
+    fireEvent.input(screen.getByLabelText("Name"), { target: { value: "Abe" } });
+
+    await waitForElementToBeRemoved(error);
+    expect(screen.getByLabelText("Name")).not.toHaveAttribute("aria-invalid");
+  });
+
+  test("accepts the shortest valid name and password", async () => {
+    const post = mockPostUser(() => Promise.resolve({ data: { user: {} }, status: 201 }));
+    const dialog = await openDialog();
+
+    fillForm({ name: "Abe", email: "abe@example.com", password: "12345678" });
+    submit();
+
+    await waitForElementToBeRemoved(dialog);
+    expect(post.mock.calls[0]).toEqual(["/users", { name: "Abe", email: "abe@example.com", password: "12345678" }]);
+  });
+
   test("posts the trimmed values to /users and closes on success", async () => {
     const post = mockPostUser(() => Promise.resolve({ data: { user: {} }, status: 201 }));
     const invalidate = spyOn(queryClient, "invalidateQueries");
@@ -108,6 +173,30 @@ describe("CreateUserDialog", () => {
     expect(await screen.findByText("A user with this email already exists")).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "New user" })).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("Grace Hopper");
+  });
+
+  test("falls back to the HTTP status when the error response has no message", async () => {
+    mockPostUser(() => httpError(400, "Bad Request"));
+    await openDialog();
+
+    fillForm({ name: "Grace Hopper", email: "grace@example.com", password: "12345678" });
+    submit();
+
+    expect(await screen.findByText("HTTP 400")).toBeInTheDocument();
+  });
+
+  test("clears the API error when reopened", async () => {
+    mockPostUser(() => httpError(409, { error: "A user with this email already exists" }));
+    await openDialog();
+    fillForm({ name: "Grace Hopper", email: "grace@example.com", password: "12345678" });
+    submit();
+    await screen.findByText("A user with this email already exists");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "New user" }));
+
+    await screen.findByRole("dialog", { name: "New user" });
+    expect(screen.queryByText("A user with this email already exists")).not.toBeInTheDocument();
   });
 
   test("starts with an empty form when reopened", async () => {

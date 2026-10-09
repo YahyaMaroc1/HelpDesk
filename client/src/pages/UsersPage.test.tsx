@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { api } from "@/lib/api.ts";
 import { Role } from "@/lib/role.ts";
@@ -96,5 +96,65 @@ describe("UsersPage", () => {
     renderWithQuery(<UsersPage />);
 
     expect(await screen.findByText("Couldn't load users: HTTP 404")).toBeInTheDocument();
+  });
+
+  describe("New user dialog", () => {
+    async function openDialog() {
+      mockGetUsers(ok({ users }));
+      renderWithQuery(<UsersPage />);
+      await screen.findByRole("table");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "New user" }));
+      return screen.findByRole("dialog", { name: "New user" });
+    }
+
+    // A full left-button press and release, which Base UI needs to treat a press as an outside click.
+    function press(el: Element) {
+      fireEvent.pointerDown(el, { button: 0, pointerType: "mouse" });
+      fireEvent.mouseDown(el, { button: 0 });
+      fireEvent.pointerUp(el, { button: 0, pointerType: "mouse" });
+      fireEvent.mouseUp(el, { button: 0 });
+      fireEvent.click(el, { button: 0 });
+    }
+
+    test("opens when the New user button is clicked", async () => {
+      const dialog = await openDialog();
+
+      expect(within(dialog).getByLabelText("Name")).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Create user" })).toBeInTheDocument();
+    });
+
+    test("closes when Escape is pressed", async () => {
+      const dialog = await openDialog();
+
+      fireEvent.keyDown(within(dialog).getByLabelText("Name"), { key: "Escape" });
+
+      // Base UI closes the dialog synchronously (animations are disabled in tests).
+      expect(dialog).not.toBeInTheDocument();
+      expect(screen.getByRole("table")).toBeInTheDocument();
+    });
+
+    test("closes when clicking outside it", async () => {
+      const dialog = await openDialog();
+      // The backdrop covering the page has no role, so it can only be found by its slot.
+      const backdrop = document.querySelector('[data-slot="dialog-overlay"]');
+      expect(backdrop).not.toBeNull();
+
+      press(backdrop!);
+
+      // Base UI closes the dialog synchronously (animations are disabled in tests).
+      expect(dialog).not.toBeInTheDocument();
+      expect(screen.getByRole("table")).toBeInTheDocument();
+    });
+
+    test("stays open when clicking inside it", async () => {
+      const dialog = await openDialog();
+
+      press(within(dialog).getByRole("heading", { name: "New user" }));
+
+      // A dismissal would be synchronous (see above), so the dialog would already be gone.
+      expect(dialog).toBeInTheDocument();
+    });
   });
 });
