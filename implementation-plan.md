@@ -18,8 +18,8 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 
 - [ ] 2.1 `User` model: name, email, password hash, role (`ADMIN` / `AGENT`), active flag, timestamps
 - [x] 2.2 `Session` model: session ID, user ID, expiry
-- [ ] 2.3 `Ticket` model: subject, sender email and name, status (`OPEN` / `RESOLVED` / `CLOSED`), category (`GENERAL_QUESTION` / `TECHNICAL_QUESTION` / `REFUND_REQUEST`, nullable until classified), AI summary, assigned agent, timestamps
-- [ ] 2.4 `Message` model: ticket ID, direction (inbound / outbound), body, sender, email message ID (for threading), timestamp
+- [x] 2.3 `Ticket` model: subject, sender email and name, status (`OPEN` / `RESOLVED` / `CLOSED`), category (`GENERAL_QUESTION` / `TECHNICAL_QUESTION` / `REFUND_REQUEST`, nullable until classified), AI summary, assigned agent, timestamps
+- [x] 2.4 `Message` model: ticket ID, direction (inbound / outbound), body, sender, email message ID (for threading), timestamp
 - [ ] 2.5 `KnowledgeBaseArticle` model: title, content, timestamps
 - [ ] 2.6 Run the first migration
 - [ ] 2.7 Seed script: create the admin from environment variables, plus a few knowledge base articles
@@ -73,13 +73,13 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 ## Phase 6 – Inbound Email
 
 - [ ] 6.1 Choose the provider (SendGrid or Mailgun) and set up an inbound domain/route
-- [ ] 6.2 `POST /api/webhooks/inbound-email`: parse sender, subject, body and message ID
-- [ ] 6.3 Verify the webhook signature or secret so only the provider can call it
-- [ ] 6.4 New email → create a ticket (status Open) with its first message
-- [ ] 6.5 Reply to an existing thread → add a message to the existing ticket (match on `In-Reply-To` / `References`), and reopen it if it was Resolved
-- [ ] 6.6 Ignore duplicate deliveries of the same message ID
+- [x] 6.2 `POST /api/webhooks/inbound-email`: parse sender, subject, body and message ID
+- [x] 6.3 Verify the webhook signature or secret so only the provider can call it (shared secret in `X-Webhook-Secret`; add the provider's signature check in 6.1)
+- [x] 6.4 New email → create a ticket (status Open) with its first message
+- [x] 6.5 Reply to an existing thread → add a message to the existing ticket (match on `In-Reply-To` / `References`), and reopen it if it was Resolved
+- [x] 6.6 Ignore duplicate deliveries of the same message ID
 - [ ] 6.7 Strip quoted reply text and signatures where possible
-- [ ] 6.8 Test locally by sending sample webhook payloads to the endpoint
+- [x] 6.8 Test locally by sending sample webhook payloads to the endpoint
 
 **Done when:** sending an email to the support address creates a ticket that shows up in the list.
 

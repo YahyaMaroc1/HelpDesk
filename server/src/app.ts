@@ -8,6 +8,7 @@ import { requireAuth } from "./middleware/requireAuth.ts";
 import { healthRouter } from "./routes/health.ts";
 import { meRouter } from "./routes/me.ts";
 import { usersRouter } from "./routes/users.ts";
+import { webhooksRouter } from "./routes/webhooks.ts";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -43,6 +44,9 @@ app.use("/api/auth", (req, _res, next) => {
 
 // Better Auth reads the raw body, so it must be mounted before express.json().
 app.all("/api/auth/*splat", toNodeHandler(auth));
+
+// Authenticated by a shared secret rather than a session; parses its own (larger) JSON bodies.
+app.use("/api/webhooks", webhooksRouter);
 
 app.use(express.json({ limit: "100kb" }));
 

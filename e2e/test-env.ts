@@ -39,6 +39,9 @@ export const testEscalationAgent = {
   password: "test-escalation-password",
 };
 
+// Shared secret the inbound email webhook expects in the X-Webhook-Secret header (passed to the test server).
+export const inboundEmailSecret = "test-inbound-email-secret";
+
 // Saved by tests/auth.setup.ts; used as storageState by tests that need a signed-in user.
 const authDir = fileURLToPath(new URL("./playwright/.auth/", import.meta.url));
 export const adminAuthFile = `${authDir}admin.json`;

@@ -1,5 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
-import { TEST_BASE_URL, TEST_DATABASE_URL, TEST_PORT, testAdmin, testAgent, testEscalationAgent } from "./test-env.ts";
+import {
+  TEST_BASE_URL,
+  TEST_DATABASE_URL,
+  TEST_PORT,
+  inboundEmailSecret,
+  testAdmin,
+  testAgent,
+  testEscalationAgent,
+} from "./test-env.ts";
 
 export default defineConfig({
   testDir: "./tests",
@@ -43,6 +51,7 @@ export default defineConfig({
       ADMIN_EMAIL: testAdmin.email,
       ADMIN_PASSWORD: testAdmin.password,
       E2E_AGENTS: JSON.stringify([testAgent, testEscalationAgent]),
+      INBOUND_EMAIL_SECRET: inboundEmailSecret,
     },
   },
 });

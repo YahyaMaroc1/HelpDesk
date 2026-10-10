@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Role } from "../generated/prisma/enums.ts";
 import { auth, passwordLength, type Session } from "../lib/auth.ts";
 import { prisma } from "../lib/prisma.ts";
+import { validate } from "../lib/validate.ts";
 
 // Admin only: app.ts mounts this router behind requireAuth and requireAdmin.
 export const usersRouter = Router();
@@ -53,12 +54,9 @@ usersRouter.get("/", async (_req, res) => {
 // Creates an agent. Public sign-up is disabled, so create the user and credential account the way
 // prisma/seed.ts does. Hashing directly skips Better Auth's password-length check; the schema applies it.
 usersRouter.post("/", async (req, res) => {
-  const parsed = createUserSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
-    return;
-  }
-  const { name, email, password } = parsed.data;
+  const body = validate(createUserSchema, req.body, res);
+  if (!body) return;
+  const { name, email, password } = body;
 
   const conflict = await emailConflict(email);
   if (conflict) {
@@ -83,18 +81,12 @@ usersRouter.post("/", async (req, res) => {
 
 // Edits a user's name and email, and sets a new password when one is given.
 usersRouter.patch("/:id", async (req, res) => {
-  const params = userParamsSchema.safeParse(req.params);
-  if (!params.success) {
-    res.status(404).json({ error: params.error.issues[0]?.message ?? "User not found" });
-    return;
-  }
-  const parsed = updateUserSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
-    return;
-  }
-  const { id } = params.data;
-  const { name, email, password } = parsed.data;
+  const params = validate(userParamsSchema, req.params, res, 404);
+  if (!params) return;
+  const body = validate(updateUserSchema, req.body, res);
+  if (!body) return;
+  const { id } = params;
+  const { name, email, password } = body;
 
   if (!(await prisma.user.findFirst({ where: { id, deletedAt: null }, select: { id: true } }))) {
     res.status(404).json({ error: "User not found" });
@@ -129,12 +121,9 @@ usersRouter.patch("/:id", async (req, res) => {
 // Soft-deletes a user: they're hidden from the list, signed out everywhere, and can no longer sign in (see the
 // session hook in lib/auth.ts). The row stays, so their email remains taken. Admins can't be deleted.
 usersRouter.delete("/:id", async (req, res) => {
-  const params = userParamsSchema.safeParse(req.params);
-  if (!params.success) {
-    res.status(404).json({ error: params.error.issues[0]?.message ?? "User not found" });
-    return;
-  }
-  const { id } = params.data;
+  const params = validate(userParamsSchema, req.params, res, 404);
+  if (!params) return;
+  const { id } = params;
 
   const user = await prisma.user.findFirst({ where: { id, deletedAt: null }, select: { role: true } });
   if (!user) {

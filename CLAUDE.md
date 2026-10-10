@@ -130,6 +130,13 @@ Run from the project root:
 - `bun run start` – production: API + built client on :3000, with `NODE_ENV=production` (turns on rate limiting). Deployments must set `NODE_ENV=production` too, or login isn't rate-limited.
 - `bun run typecheck` – type-check all workspaces (client, server, e2e); run it after every change
 
+## Inbound email
+
+- No email provider is chosen yet (task 6.1). `POST /api/webhooks/inbound-email` (`server/src/routes/webhooks.ts`) takes a provider-neutral JSON email: `from`, `fromName?`, `subject?`, `text`, `messageId`, and the raw `inReplyTo?` / `references?` headers. A provider adapter will translate its payload into this shape.
+- It's not session-authenticated: every request needs the `X-Webhook-Secret` header matching `INBOUND_EMAIL_SECRET` (401 otherwise; 503 if the variable is unset). The router is mounted before the app-wide `express.json()` so it checks the secret first and accepts bodies up to 1 MB.
+- New email → 201 `{ ticketId, result: "created" }` (an `OPEN` ticket with its first `INBOUND` message). A reply whose `In-Reply-To`/`References` matches a stored `Message.emailMessageId` → 200 `"appended"` to that ticket, reopening it if `RESOLVED`. A repeated Message-ID → 200 `"duplicate"` (unique index, so concurrent redeliveries are safe too). Message-IDs are stored without angle brackets.
+- `bun run email:sample` (from `server/`, needs the API running) posts a sample email; `--reply-to <Message-ID>` sends a reply to it. `API_URL` targets another server.
+
 ## Data fetching (client)
 
 **Always use axios + TanStack Query for API calls in the client.** Never call `fetch` directly and never load data with `useEffect` + `useState`.
@@ -153,7 +160,7 @@ Run from the project root:
 
 - All API routes live under `/api`; the client calls them as described in "Data fetching" above.
 - Express 5: async handlers forward rejected promises to the error handler automatically (no manual `next(err)`); wildcards must be named (`/*splat`).
-- **Validate data with Zod** (v4, `import { z } from "zod"`) on both sides. Client forms: React Hook Form + `zodResolver` (`pages/LoginPage.tsx` is the reference form). Server: give every route that takes input (body, params, query) a Zod schema and `safeParse` it before use; on failure answer 400 `{ error: parsed.error.issues[0]?.message }` and use only `parsed.data` afterwards. Put the user-facing message on each rule, and on `z.string({ error })` so a missing or wrong-typed field gets it too. Keep a form's schema and its route's schema in sync (same rules and messages): `components/UserForm.tsx` and `routes/users.ts` are the reference pair. Don't hand-roll validation or add another validation library.
+- **Validate data with Zod** (v4, `import { z } from "zod"`) on both sides. Client forms: React Hook Form + `zodResolver` (`pages/LoginPage.tsx` is the reference form). Server: give every route that takes input (body, params, query) a Zod schema and parse it with `validate(schema, input, res)` from `server/src/lib/validate.ts` (`const body = validate(schema, req.body, res); if (!body) return;`). On failure it answers 400 `{ error }` with the first issue's message (pass a status as the 4th argument, e.g. 404 for an invalid `:id`); use only its return value afterwards. Don't call `safeParse` and build the error response by hand in routes. Put the user-facing message on each rule, and on `z.string({ error })` so a missing or wrong-typed field gets it too. Keep a form's schema and its route's schema in sync (same rules and messages): `components/UserForm.tsx` and `routes/users.ts` are the reference pair. Don't hand-roll validation or add another validation library.
 - Local imports include the `.ts`/`.tsx` extension. In the client, `@/*` maps to `client/src/*`.
 - shadcn/ui is set up manually (`client/components.json`, style `base-nova`, neutral) because the CLI can't detect a framework with Bun's bundler, so `init` fails but `add` works. `add` doesn't always install a component's npm dependencies (e.g. `@base-ui/react`): `bun add` them yourself if typecheck can't find them.
 - Build UI from shadcn components and theme tokens (`bg-background`, `text-muted-foreground`, `text-destructive`, …), not raw Tailwind palette colors like `gray-500`. `pages/LoginPage.tsx` is the reference form: React Hook Form + Zod with `Field`/`FieldLabel`/`Input`/`FieldError`, plus an `Alert` for server errors. `Layout.tsx` and `HomePage.tsx` still use the old raw styling.
