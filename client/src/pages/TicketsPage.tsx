@@ -108,7 +108,7 @@ const defaultSorting: SortingState = [{ id: "createdAt", desc: true }];
 const searchDebounceMs = 300;
 // The server allows page sizes up to 100 (listTicketsQuerySchema in server/src/routes/tickets.ts).
 export const ticketPageSizes = [10, 25, 50, 100];
-const defaultPagination: PaginationState = { pageIndex: 0, pageSize: 25 };
+const defaultPagination: PaginationState = { pageIndex: 0, pageSize: 10 };
 const noTickets: TicketListItem[] = [];
 
 export function TicketsPage() {
@@ -244,7 +244,7 @@ export function TicketsPage() {
   );
 }
 
-// "1–25 of 102", the page size, and previous/next page buttons.
+// "1–10 of 102", the page size, and previous/next page buttons.
 function TicketsPagination({ table }: { table: ReturnType<typeof useTable<typeof features, TicketListItem>> }) {
   const { pageIndex, pageSize } = table.state.pagination;
   const total = table.getRowCount();

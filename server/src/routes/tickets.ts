@@ -44,7 +44,7 @@ const listTicketsQuerySchema = z.object({
     .int(pageSizeMessage)
     .min(1, pageSizeMessage)
     .max(maxTicketPageSize, pageSizeMessage)
-    .default(25),
+    .default(10),
 });
 type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;
 type SortBy = ListTicketsQuery["sortBy"];

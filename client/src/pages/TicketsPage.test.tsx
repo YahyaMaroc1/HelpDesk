@@ -61,7 +61,7 @@ const renderPage = () =>
 const pending = () => new Promise(() => {});
 
 // The params of an unfiltered request for the first page, newest first.
-const defaultParams = { sortBy: "createdAt", sortOrder: "desc", page: 1, pageSize: 25 };
+const defaultParams = { sortBy: "createdAt", sortOrder: "desc", page: 1, pageSize: 10 };
 
 // The params of the last GET /tickets request.
 const lastTicketParams = (get: ReturnType<typeof mockGetTickets>) =>
@@ -137,7 +137,7 @@ describe("TicketsPage", () => {
 
     await waitFor(() => expect(rowSubjects(table)).toEqual(["Can't log in", "Refund for my course"]));
     expect(ticketRequests(get)[1]?.[1]).toEqual({
-      params: { sortBy: "subject", sortOrder: "asc", page: 1, pageSize: 25 },
+      params: { sortBy: "subject", sortOrder: "asc", page: 1, pageSize: 10 },
       signal: expect.any(AbortSignal),
     });
     expect(within(table).getByRole("columnheader", { name: "Subject" })).toHaveAttribute("aria-sort", "ascending");
@@ -147,7 +147,7 @@ describe("TicketsPage", () => {
 
     expect(ticketRequests(get)).toHaveLength(3);
     expect(ticketRequests(get)[2]?.[1]).toEqual({
-      params: { sortBy: "subject", sortOrder: "desc", page: 1, pageSize: 25 },
+      params: { sortBy: "subject", sortOrder: "desc", page: 1, pageSize: 10 },
       signal: expect.any(AbortSignal),
     });
     expect(within(table).getByRole("columnheader", { name: "Subject" })).toHaveAttribute("aria-sort", "descending");
@@ -311,19 +311,19 @@ describe("TicketsPage pagination", () => {
   });
 
   test("requests the next and previous pages from the server", async () => {
-    const get = mockGetTickets(() => ok({ tickets, total: 60 }));
+    const get = mockGetTickets(() => ok({ tickets, total: 25 }));
     renderPage();
     await screen.findByRole("table");
     expect(within(pagination()).getByText("Page 1 of 3")).toBeInTheDocument();
 
     fireEvent.click(within(pagination()).getByRole("button", { name: "Next page" }));
     expect(lastTicketParams(get)).toEqual({ ...defaultParams, page: 2 });
-    expect(await within(pagination()).findByText("26–50 of 60 tickets")).toBeInTheDocument();
+    expect(await within(pagination()).findByText("11–20 of 25 tickets")).toBeInTheDocument();
     expect(within(pagination()).getByText("Page 2 of 3")).toBeInTheDocument();
 
     fireEvent.click(within(pagination()).getByRole("button", { name: "Next page" }));
     expect(lastTicketParams(get)).toEqual({ ...defaultParams, page: 3 });
-    expect(await within(pagination()).findByText("51–60 of 60 tickets")).toBeInTheDocument();
+    expect(await within(pagination()).findByText("21–25 of 25 tickets")).toBeInTheDocument();
     expect(within(pagination()).getByRole("button", { name: "Next page" })).toBeDisabled();
 
     fireEvent.click(within(pagination()).getByRole("button", { name: "Previous page" }));
