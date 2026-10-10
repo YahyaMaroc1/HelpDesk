@@ -154,3 +154,35 @@ ticketsRouter.get("/:id", async (req, res) => {
   }
   res.json({ ticket });
 });
+
+// Keep in sync with the assignee picker in client/src/pages/TicketDetailPage.tsx. `assignedToId` is an active user's
+// id (from GET /api/assignees), or null to unassign the ticket.
+const assigneeMessage = "Choose an assignee";
+const updateTicketSchema = z.object({
+  assignedToId: z.union([z.string().trim().min(1, assigneeMessage).max(100, assigneeMessage), z.null()], {
+    error: assigneeMessage,
+  }),
+});
+
+// Changes a ticket's assignee and returns the updated ticket, as GET /api/tickets/:id does.
+ticketsRouter.patch("/:id", async (req, res) => {
+  const params = validate(ticketParamsSchema, req.params, res, 404);
+  if (!params) return;
+  const body = validate(updateTicketSchema, req.body, res);
+  if (!body) return;
+  const { id } = params;
+  const { assignedToId } = body;
+
+  if (!(await prisma.ticket.findUnique({ where: { id }, select: { id: true } }))) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+  // Deleted users keep their row, so check they're still active.
+  if (assignedToId && !(await prisma.user.findFirst({ where: { id: assignedToId, deletedAt: null }, select: { id: true } }))) {
+    res.status(400).json({ error: "Assignee not found" });
+    return;
+  }
+
+  const ticket = await prisma.ticket.update({ where: { id }, data: { assignedToId }, select: ticketDetailFields });
+  res.json({ ticket });
+});

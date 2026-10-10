@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { api } from "@/lib/api.ts";
@@ -51,7 +51,18 @@ function renderPage(id = "t1") {
   );
 }
 
-const mockGet = (result: () => Promise<unknown>) => spyOn(api, "get").mockImplementation(result as typeof api.get);
+const assignees = [
+  { id: "a1", name: "Alan Agent" },
+  { id: "a2", name: "Beth Admin" },
+];
+
+// Stubs GET /tickets/:id with `result`, and GET /assignees with `assignees`.
+const mockGet = (result: () => Promise<unknown>) =>
+  spyOn(api, "get").mockImplementation(((path: string) =>
+    path === "/assignees" ? ok({ assignees }) : result()) as typeof api.get);
+
+// The [path, config] of each ticket request the page sent.
+const ticketRequests = (get: ReturnType<typeof mockGet>) => get.mock.calls.filter(([path]) => path !== "/assignees");
 
 const pending = () => new Promise(() => {});
 
@@ -78,8 +89,7 @@ describe("TicketDetailPage", () => {
     renderPage("t1");
 
     await screen.findByRole("heading", { name: ticket.subject });
-    expect(get).toHaveBeenCalledTimes(1);
-    expect(get).toHaveBeenCalledWith("/tickets/t1", { signal: expect.any(AbortSignal) });
+    expect(ticketRequests(get)).toEqual([["/tickets/t1", { signal: expect.any(AbortSignal) }]]);
   });
 
   test("shows a loading state while the ticket loads", () => {
@@ -96,7 +106,7 @@ describe("TicketDetailPage", () => {
     expect(await screen.findByRole("heading", { level: 1, name: ticket.subject })).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
     expect(screen.getByText("Refund request")).toBeInTheDocument();
-    expect(screen.getByText("Alan Agent")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("a1");
     expect(screen.getByText(formatTicketDate(ticket.updatedAt), { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText(ticket.summary!)).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -121,7 +131,7 @@ describe("TicketDetailPage", () => {
 
     await screen.findByRole("heading", { name: ticket.subject });
     expect(screen.getByText("Unclassified")).toBeInTheDocument();
-    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("");
     expect(screen.queryByRole("heading", { name: "Summary" })).not.toBeInTheDocument();
   });
 
@@ -138,5 +148,92 @@ describe("TicketDetailPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the ticket: Ticket not found");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailPage assignee", () => {
+  // Serves the ticket as it is on the "server", which a successful PATCH changes, so refetches see the new assignee.
+  function mockTicketApi(patchResult?: () => Promise<unknown>) {
+    let current = ticket;
+    mockGet(() => ok({ ticket: current }));
+    return spyOn(api, "patch").mockImplementation(((_path: string, body: { assignedToId: string | null }) => {
+      if (patchResult) return patchResult();
+      const assignedTo = assignees.find((user) => user.id === body.assignedToId) ?? null;
+      current = { ...current, assignedTo };
+      return ok({ ticket: current });
+    }) as typeof api.patch);
+  }
+
+  const assigneeSelect = () => screen.findByRole("combobox", { name: "Assignee" });
+
+  test("offers Unassigned and the active users", async () => {
+    mockTicketApi();
+    renderPage();
+
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Unassigned",
+      "Alan Agent",
+      "Beth Admin",
+    ]);
+  });
+
+  test("assigns the ticket to the chosen user", async () => {
+    const patch = mockTicketApi();
+    const invalidate = spyOn(queryClient, "invalidateQueries");
+    renderPage();
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+
+    fireEvent.change(select, { target: { value: "a2" } });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { assignedToId: "a2" }));
+    expect(await within(select).findByRole("option", { name: "Beth Admin", selected: true })).toBeInTheDocument();
+    expect(select).toBeEnabled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["tickets"] });
+  });
+
+  test("shows the chosen user and disables the select while saving", async () => {
+    mockTicketApi(pending);
+    renderPage();
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+
+    fireEvent.change(select, { target: { value: "a2" } });
+    await waitFor(() => expect(select).toBeDisabled());
+    expect(select).toHaveValue("a2");
+  });
+
+  test("unassigns the ticket", async () => {
+    const patch = mockTicketApi();
+    renderPage();
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+
+    fireEvent.change(select, { target: { value: "" } });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { assignedToId: null }));
+    expect(await within(select).findByRole("option", { name: "Unassigned", selected: true })).toBeInTheDocument();
+  });
+
+  test("shows the API's error and keeps the assignee when assigning fails", async () => {
+    mockTicketApi(() => httpError(400, { error: "Assignee not found" }));
+    renderPage();
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+
+    fireEvent.change(select, { target: { value: "a2" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't assign the ticket: Assignee not found");
+    expect(select).toHaveValue("a1");
+    expect(select).toBeEnabled();
+  });
+
+  test("keeps showing a deleted user who is still assigned", async () => {
+    mockGet(() => ok({ ticket: { ...ticket, assignedTo: { id: "gone", name: "Gina Gone" } } }));
+    renderPage();
+
+    const select = await assigneeSelect();
+    await within(select).findByRole("option", { name: "Beth Admin" });
+    expect(select).toHaveValue("gone");
+    expect(within(select).getByRole("option", { name: "Gina Gone" })).toBeInTheDocument();
   });
 });

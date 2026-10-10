@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, CircleAlertIcon } from "lucide-react";
 import { Link, useParams } from "react-router";
+import { TicketAssigneeSelect } from "@/components/TicketAssigneeSelect.tsx";
 import { TicketStatusBadge } from "@/components/TicketStatusBadge.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -73,7 +74,7 @@ export function TicketDetailPage() {
               )}
             </TicketField>
             <TicketField label="Assignee">
-              {ticket.assignedTo?.name ?? <span className="text-muted-foreground">Unassigned</span>}
+              <TicketAssigneeSelect ticket={ticket} />
             </TicketField>
             <TicketField label="Created">{formatTicketDate(ticket.createdAt)}</TicketField>
             <TicketField label="Updated">{formatTicketDate(ticket.updatedAt)}</TicketField>
