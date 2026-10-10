@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
+import { MemoryRouter } from "react-router";
 import { api } from "@/lib/api.ts";
 import { queryClient } from "@/lib/query-client.ts";
 import { TicketCategory, TicketStatus } from "@/lib/ticket.ts";
@@ -49,6 +50,14 @@ function ticketRequests(get: ReturnType<typeof mockGetTickets>) {
   return get.mock.calls.filter(([path]) => path === "/tickets");
 }
 
+// The subjects link to the ticket pages, so the page needs a router.
+const renderPage = () =>
+  renderWithQuery(
+    <MemoryRouter>
+      <TicketsPage />
+    </MemoryRouter>,
+  );
+
 const pending = () => new Promise(() => {});
 
 // The params of an unfiltered request for the first page, newest first.
@@ -86,7 +95,7 @@ afterEach(() => {
 describe("TicketsPage", () => {
   test("requests the tickets from GET /tickets, newest first", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     await screen.findByRole("table");
     expect(ticketRequests(get)).toHaveLength(1);
@@ -97,9 +106,18 @@ describe("TicketsPage", () => {
     });
   });
 
+  test("links each subject to the ticket's page", async () => {
+    mockGetTickets(() => ok({ tickets, total: 2 }));
+    renderPage();
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("link", { name: "Refund for my course" })).toHaveAttribute("href", "/tickets/2");
+    expect(within(table).getByRole("link", { name: "Can't log in" })).toHaveAttribute("href", "/tickets/1");
+  });
+
   test("marks the Created column as sorted descending and the others as sortable", async () => {
     mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     const table = await screen.findByRole("table");
     for (const name of ["Subject", "From", "Status", "Category", "Assignee", "Created"]) {
@@ -112,7 +130,7 @@ describe("TicketsPage", () => {
   test("sorts on the server when a column header is clicked, ascending then descending", async () => {
     const reversed = [...tickets].reverse();
     const get = mockGetTickets(() => ok({ tickets, total: 2 }), () => ok({ tickets: reversed, total: 2 }), pending);
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     const table = await screen.findByRole("table");
     fireEvent.click(within(table).getByRole("button", { name: "Subject" }));
@@ -140,7 +158,7 @@ describe("TicketsPage", () => {
 
   test("shows the heading and a loading status while the request is pending", () => {
     mockGetTickets(pending);
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     expect(screen.getByRole("heading", { name: "Tickets" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Loading tickets…");
@@ -150,7 +168,7 @@ describe("TicketsPage", () => {
 
   test("lists the tickets in the order the API returns them (newest first)", async () => {
     mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     const table = await screen.findByRole("table");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -182,7 +200,7 @@ describe("TicketsPage", () => {
 
   test("shows an empty state when there are no tickets", async () => {
     mockGetTickets(() => ok({ tickets: [], total: 0 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     const table = await screen.findByRole("table");
     expect(within(table).getByText("No tickets yet.")).toBeInTheDocument();
@@ -191,7 +209,7 @@ describe("TicketsPage", () => {
 
   test("shows the API's error message when the request fails", async () => {
     mockGetTickets(() => httpError(401, { error: "Unauthorized" }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     expect(await screen.findByText("Couldn't load tickets: Unauthorized")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -202,7 +220,7 @@ describe("TicketsPage", () => {
 describe("TicketsPage filters", () => {
   test("offers the active users in the assignee filter", async () => {
     mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
 
     const select = screen.getByRole("combobox", { name: "Assignee" });
     await within(select).findByRole("option", { name: "Beth Admin" });
@@ -216,7 +234,7 @@ describe("TicketsPage filters", () => {
 
   test("filters by status, category and assignee on the server, keeping the sort", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByRole("table");
     await within(screen.getByRole("combobox", { name: "Assignee" })).findByRole("option", { name: "Alan Agent" });
 
@@ -239,7 +257,7 @@ describe("TicketsPage filters", () => {
 
   test("searches once typing pauses, with the text trimmed", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByRole("table");
 
     const search = screen.getByRole("searchbox", { name: "Search tickets" });
@@ -254,7 +272,7 @@ describe("TicketsPage filters", () => {
 
   test("shows a filtered empty state, and Clear filters brings back all tickets", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 2 }), () => ok({ tickets: [], total: 0 }), () => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByText("Refund for my course");
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
 
@@ -275,7 +293,7 @@ describe("TicketsPage pagination", () => {
 
   test("shows the range and disables both page buttons when everything fits on one page", async () => {
     mockGetTickets(() => ok({ tickets, total: 2 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByRole("table");
 
     expect(within(pagination()).getByText("1–2 of 2 tickets")).toBeInTheDocument();
@@ -286,7 +304,7 @@ describe("TicketsPage pagination", () => {
 
   test("hides the pagination when there are no tickets", async () => {
     mockGetTickets(() => ok({ tickets: [], total: 0 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByText("No tickets yet.");
 
     expect(screen.queryByRole("navigation", { name: "Pagination" })).not.toBeInTheDocument();
@@ -294,7 +312,7 @@ describe("TicketsPage pagination", () => {
 
   test("requests the next and previous pages from the server", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 60 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByRole("table");
     expect(within(pagination()).getByText("Page 1 of 3")).toBeInTheDocument();
 
@@ -314,7 +332,7 @@ describe("TicketsPage pagination", () => {
 
   test("changes the page size", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 60 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     await screen.findByRole("table");
 
     fireEvent.change(within(pagination()).getByRole("combobox", { name: "Rows per page" }), { target: { value: "50" } });
@@ -324,7 +342,7 @@ describe("TicketsPage pagination", () => {
 
   test("goes back to the first page when the sort or a filter changes", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 60 }));
-    renderWithQuery(<TicketsPage />);
+    renderPage();
     const table = await screen.findByRole("table");
 
     fireEvent.click(within(pagination()).getByRole("button", { name: "Next page" }));

@@ -20,16 +20,17 @@ import {
   CircleAlertIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 import { hasTicketFilters, noTicketFilters, TicketFilters, type TicketFilterValues } from "@/components/TicketFilters.tsx";
+import { TicketStatusBadge } from "@/components/TicketStatusBadge.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { api, apiErrorMessage } from "@/lib/api.ts";
-import { TicketCategory, TicketStatus, ticketCategoryLabels, ticketStatusLabels } from "@/lib/ticket.ts";
+import { TicketCategory, TicketStatus, ticketCategoryLabels } from "@/lib/ticket.ts";
 
 // Shape of GET /api/tickets (server/src/routes/tickets.ts).
 export type TicketListItem = {
@@ -47,12 +48,6 @@ export type TicketListItem = {
 export type TicketSortColumn = "subject" | "senderEmail" | "status" | "category" | "assignee" | "createdAt";
 export type TicketSortOrder = "asc" | "desc";
 
-const statusVariants = {
-  [TicketStatus.OPEN]: "default",
-  [TicketStatus.RESOLVED]: "secondary",
-  [TicketStatus.CLOSED]: "outline",
-} as const satisfies Record<TicketStatus, string>;
-
 // Date and time: several tickets usually arrive on the same day.
 export const formatTicketDate = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -64,9 +59,13 @@ const columns = column.columns([
   column.accessor("subject", {
     header: "Subject",
     cell: ({ row }) => (
-      <div className="max-w-80 truncate font-medium" title={row.original.subject}>
+      <Link
+        to={`/tickets/${row.original.id}`}
+        className="block max-w-80 truncate font-medium hover:underline"
+        title={row.original.subject}
+      >
         {row.original.subject}
-      </div>
+      </Link>
     ),
   }),
   column.accessor("senderEmail", {
@@ -83,9 +82,7 @@ const columns = column.columns([
   }),
   column.accessor("status", {
     header: "Status",
-    cell: ({ row }) => (
-      <Badge variant={statusVariants[row.original.status]}>{ticketStatusLabels[row.original.status]}</Badge>
-    ),
+    cell: ({ row }) => <TicketStatusBadge status={row.original.status} />,
   }),
   column.accessor("category", {
     header: "Category",

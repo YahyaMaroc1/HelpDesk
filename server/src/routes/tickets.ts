@@ -127,3 +127,30 @@ async function ticketsByAssignee(where: Prisma.TicketWhereInput, order: Prisma.S
   });
   return [...assigned, ...unassigned];
 }
+
+const ticketParamsSchema = z.object({ id: z.string().min(1, "Ticket not found") });
+
+// Select fields explicitly, as for the list. Messages leave out the email Message-ID, which is only for threading.
+const ticketDetailFields = {
+  ...ticketListFields,
+  summary: true,
+  updatedAt: true,
+  messages: {
+    select: { id: true, direction: true, body: true, senderEmail: true, senderName: true, createdAt: true },
+    // Oldest first, as a thread reads. The id breaks ties between messages saved in the same millisecond.
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+} as const satisfies Prisma.TicketSelect;
+
+// One ticket with its message thread.
+ticketsRouter.get("/:id", async (req, res) => {
+  const params = validate(ticketParamsSchema, req.params, res, 404);
+  if (!params) return;
+
+  const ticket = await prisma.ticket.findUnique({ where: { id: params.id }, select: ticketDetailFields });
+  if (!ticket) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+  res.json({ ticket });
+});
