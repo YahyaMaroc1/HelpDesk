@@ -11,7 +11,7 @@ export const ticketStatusLabels: Record<TicketStatus, string> = {
 };
 
 export const ticketCategoryLabels: Record<TicketCategory, string> = {
-  [TicketCategory.GENERAL_QUESTION]: "General question",
-  [TicketCategory.TECHNICAL_QUESTION]: "Technical question",
-  [TicketCategory.REFUND_REQUEST]: "Refund request",
+  [TicketCategory.GENERAL_QUESTION]: "General Question",
+  [TicketCategory.TECHNICAL_QUESTION]: "Technical Question",
+  [TicketCategory.REFUND_REQUEST]: "Refund Request",
 };

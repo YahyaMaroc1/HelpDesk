@@ -251,7 +251,7 @@ describe("TicketDetailPage status and category", () => {
 
     const options = (select: HTMLElement) => within(select).getAllByRole("option").map((option) => option.textContent);
     expect(options(await statusSelect())).toEqual(["Open", "Resolved", "Closed"]);
-    expect(options(await categorySelect())).toEqual(["General question", "Technical question", "Refund request"]);
+    expect(options(await categorySelect())).toEqual(["General Question", "Technical Question", "Refund Request"]);
   });
 
   test("changes the status", async () => {
@@ -276,7 +276,7 @@ describe("TicketDetailPage status and category", () => {
     await waitFor(() =>
       expect(patch).toHaveBeenCalledWith("/tickets/t1", { category: TicketCategory.TECHNICAL_QUESTION }),
     );
-    expect(await within(select).findByRole("option", { name: "Technical question", selected: true })).toBeInTheDocument();
+    expect(await within(select).findByRole("option", { name: "Technical Question", selected: true })).toBeInTheDocument();
   });
 
   test("classifies an unclassified ticket, which can't be set back to Unclassified", async () => {
@@ -287,7 +287,7 @@ describe("TicketDetailPage status and category", () => {
 
     fireEvent.change(select, { target: { value: TicketCategory.GENERAL_QUESTION } });
     await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { category: TicketCategory.GENERAL_QUESTION }));
-    await within(select).findByRole("option", { name: "General question", selected: true });
+    await within(select).findByRole("option", { name: "General Question", selected: true });
     expect(within(select).queryByRole("option", { name: "Unclassified" })).not.toBeInTheDocument();
   });
 

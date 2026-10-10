@@ -182,7 +182,7 @@ describe("TicketsPage", () => {
       "Refund for my course",
       "Jane Doejane@example.com",
       "Open",
-      "Refund request",
+      "Refund Request",
       "Alan Agent",
       formatTicketDate(tickets[0]!.createdAt),
     ]);
