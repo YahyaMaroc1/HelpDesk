@@ -5,6 +5,7 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.ts";
 import { requireAdmin } from "./middleware/requireAdmin.ts";
 import { requireAuth } from "./middleware/requireAuth.ts";
+import { assigneesRouter } from "./routes/assignees.ts";
 import { healthRouter } from "./routes/health.ts";
 import { meRouter } from "./routes/me.ts";
 import { ticketsRouter } from "./routes/tickets.ts";
@@ -54,6 +55,7 @@ app.use(express.json({ limit: "100kb" }));
 app.use("/api/health", healthRouter);
 app.use("/api/me", meRouter);
 app.use("/api/tickets", requireAuth, ticketsRouter);
+app.use("/api/assignees", requireAuth, assigneesRouter);
 app.use("/api/users", requireAuth, requireAdmin, usersRouter);
 
 app.use("/api", (_req, res) => {

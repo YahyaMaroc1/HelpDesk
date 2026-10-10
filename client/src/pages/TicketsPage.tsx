@@ -10,11 +10,13 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, CircleAlertIcon } from "lucide-react";
 import { useState } from "react";
+import { hasTicketFilters, noTicketFilters, TicketFilters, type TicketFilterValues } from "@/components/TicketFilters.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
+import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { api, apiErrorMessage } from "@/lib/api.ts";
 import { TicketCategory, TicketStatus, ticketCategoryLabels, ticketStatusLabels } from "@/lib/ticket.ts";
 
@@ -95,6 +97,7 @@ const columns = column.columns([
 ]);
 
 const defaultSorting: SortingState = [{ id: "createdAt", desc: true }];
+const searchDebounceMs = 300;
 const noTickets: TicketListItem[] = [];
 
 export function TicketsPage() {
@@ -104,13 +107,31 @@ export function TicketsPage() {
   const sortBy = sort.id as TicketSortColumn;
   const sortOrder: TicketSortOrder = sort.desc ? "desc" : "asc";
 
-  const { data: tickets, error, isPending } = useQuery({
-    queryKey: ["tickets", { sortBy, sortOrder }],
+  // The filters are applied on the server too. The search waits until typing pauses.
+  const [filters, setFilters] = useState<TicketFilterValues>(noTicketFilters);
+  const q = useDebouncedValue(filters.q.trim(), searchDebounceMs);
+  // Only the filters that are set, so the request and the query key leave out the others.
+  const filterParams = Object.fromEntries(Object.entries({ ...filters, q }).filter(([, value]) => value !== ""));
+  const params = { ...filterParams, sortBy, sortOrder };
+
+  const {
+    data: tickets,
+    error,
+    isPending,
+    isPlaceholderData,
+  } = useQuery({
+    queryKey: ["tickets", params],
     queryFn: async ({ signal }) =>
-      (await api.get<{ tickets: TicketListItem[] }>("/tickets", { params: { sortBy, sortOrder }, signal })).data
-        .tickets,
-    // Keep showing the current rows while another sort loads, instead of the skeleton.
+      (await api.get<{ tickets: TicketListItem[] }>("/tickets", { params, signal })).data.tickets,
+    // Keep showing the current rows while another sort or filter loads, instead of the skeleton.
     placeholderData: keepPreviousData,
+  });
+
+  // For the assignee filter. If it fails, the filter still offers "Unassigned".
+  const { data: assignees } = useQuery({
+    queryKey: ["assignees"],
+    queryFn: async ({ signal }) =>
+      (await api.get<{ assignees: { id: string; name: string }[] }>("/assignees", { signal })).data.assignees,
   });
 
   const table = useTable({
@@ -133,6 +154,8 @@ export function TicketsPage() {
         <p className="text-sm text-muted-foreground">Support requests received by email.</p>
       </div>
 
+      <TicketFilters value={filters} onChange={setFilters} assignees={assignees ?? []} />
+
       {error && (
         <Alert variant="destructive">
           <CircleAlertIcon />
@@ -143,7 +166,7 @@ export function TicketsPage() {
       {isPending && <TicketsTableSkeleton />}
 
       {tickets && (
-        <Table>
+        <Table aria-busy={isPlaceholderData} className={isPlaceholderData ? "opacity-60 transition-opacity" : undefined}>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
@@ -161,7 +184,7 @@ export function TicketsPage() {
             {tickets.length === 0 && (
               <TableRow>
                 <TableCell colSpan={columns.length} className="text-center text-muted-foreground">
-                  No tickets yet.
+                  {hasTicketFilters(filters) ? "No tickets match these filters." : "No tickets yet."}
                 </TableCell>
               </TableRow>
             )}

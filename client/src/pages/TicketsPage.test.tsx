@@ -31,12 +31,25 @@ const tickets: TicketListItem[] = [
   },
 ];
 
-// Stubs GET /api/tickets on the shared axios instance. Pass several results to answer successive requests (the last
-// one repeats).
-function mockGetTickets(...results: Promise<unknown>[]) {
+const assignees = [
+  { id: "a1", name: "Alan Agent" },
+  { id: "a2", name: "Beth Admin" },
+];
+
+// Stubs GET /api/tickets on the shared axios instance, and GET /api/assignees with `assignees`. Pass several results
+// to answer successive ticket requests (the last one repeats).
+function mockGetTickets(...results: (() => Promise<unknown>)[]) {
   let call = 0;
-  return spyOn(api, "get").mockImplementation((() => results[Math.min(call++, results.length - 1)]) as typeof api.get);
+  return spyOn(api, "get").mockImplementation(((path: string) =>
+    path === "/assignees" ? ok({ assignees }) : results[Math.min(call++, results.length - 1)]!()) as typeof api.get);
 }
+
+// The [path, config] of each GET /tickets request the page sent.
+function ticketRequests(get: ReturnType<typeof mockGetTickets>) {
+  return get.mock.calls.filter(([path]) => path === "/tickets");
+}
+
+const pending = () => new Promise(() => {});
 
 // The subject in each body row, top to bottom.
 function rowSubjects(table: HTMLElement) {
@@ -65,20 +78,20 @@ afterEach(() => {
 
 describe("TicketsPage", () => {
   test("requests the tickets from GET /tickets, newest first", async () => {
-    const get = mockGetTickets(ok({ tickets }));
+    const get = mockGetTickets(() => ok({ tickets }));
     renderWithQuery(<TicketsPage />);
 
     await screen.findByRole("table");
-    expect(get).toHaveBeenCalledTimes(1);
-    expect(get.mock.calls[0]?.[0]).toBe("/tickets");
-    expect(get.mock.calls[0]?.[1]).toEqual({
+    expect(ticketRequests(get)).toHaveLength(1);
+    expect(ticketRequests(get)[0]?.[0]).toBe("/tickets");
+    expect(ticketRequests(get)[0]?.[1]).toEqual({
       params: { sortBy: "createdAt", sortOrder: "desc" },
       signal: expect.any(AbortSignal),
     });
   });
 
   test("marks the Created column as sorted descending and the others as sortable", async () => {
-    mockGetTickets(ok({ tickets }));
+    mockGetTickets(() => ok({ tickets }));
     renderWithQuery(<TicketsPage />);
 
     const table = await screen.findByRole("table");
@@ -91,14 +104,14 @@ describe("TicketsPage", () => {
 
   test("sorts on the server when a column header is clicked, ascending then descending", async () => {
     const reversed = [...tickets].reverse();
-    const get = mockGetTickets(ok({ tickets }), ok({ tickets: reversed }), new Promise(() => {}));
+    const get = mockGetTickets(() => ok({ tickets }), () => ok({ tickets: reversed }), pending);
     renderWithQuery(<TicketsPage />);
 
     const table = await screen.findByRole("table");
     fireEvent.click(within(table).getByRole("button", { name: "Subject" }));
 
     await waitFor(() => expect(rowSubjects(table)).toEqual(["Can't log in", "Refund for my course"]));
-    expect(get.mock.calls[1]?.[1]).toEqual({
+    expect(ticketRequests(get)[1]?.[1]).toEqual({
       params: { sortBy: "subject", sortOrder: "asc" },
       signal: expect.any(AbortSignal),
     });
@@ -107,8 +120,8 @@ describe("TicketsPage", () => {
 
     fireEvent.click(within(table).getByRole("button", { name: "Subject" }));
 
-    expect(get).toHaveBeenCalledTimes(3);
-    expect(get.mock.calls[2]?.[1]).toEqual({
+    expect(ticketRequests(get)).toHaveLength(3);
+    expect(ticketRequests(get)[2]?.[1]).toEqual({
       params: { sortBy: "subject", sortOrder: "desc" },
       signal: expect.any(AbortSignal),
     });
@@ -119,7 +132,7 @@ describe("TicketsPage", () => {
   });
 
   test("shows the heading and a loading status while the request is pending", () => {
-    mockGetTickets(new Promise(() => {}));
+    mockGetTickets(pending);
     renderWithQuery(<TicketsPage />);
 
     expect(screen.getByRole("heading", { name: "Tickets" })).toBeInTheDocument();
@@ -129,7 +142,7 @@ describe("TicketsPage", () => {
   });
 
   test("lists the tickets in the order the API returns them (newest first)", async () => {
-    mockGetTickets(ok({ tickets }));
+    mockGetTickets(() => ok({ tickets }));
     renderWithQuery(<TicketsPage />);
 
     const table = await screen.findByRole("table");
@@ -161,7 +174,7 @@ describe("TicketsPage", () => {
   });
 
   test("shows an empty state when there are no tickets", async () => {
-    mockGetTickets(ok({ tickets: [] }));
+    mockGetTickets(() => ok({ tickets: [] }));
     renderWithQuery(<TicketsPage />);
 
     const table = await screen.findByRole("table");
@@ -170,11 +183,86 @@ describe("TicketsPage", () => {
   });
 
   test("shows the API's error message when the request fails", async () => {
-    mockGetTickets(httpError(401, { error: "Unauthorized" }));
+    mockGetTickets(() => httpError(401, { error: "Unauthorized" }));
     renderWithQuery(<TicketsPage />);
 
     expect(await screen.findByText("Couldn't load tickets: Unauthorized")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("TicketsPage filters", () => {
+  const lastTicketParams = (get: ReturnType<typeof mockGetTickets>) =>
+    (ticketRequests(get).at(-1)?.[1] as { params: Record<string, string> } | undefined)?.params;
+
+  test("offers the active users in the assignee filter", async () => {
+    mockGetTickets(() => ok({ tickets }));
+    renderWithQuery(<TicketsPage />);
+
+    const select = screen.getByRole("combobox", { name: "Assignee" });
+    await within(select).findByRole("option", { name: "Beth Admin" });
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All assignees",
+      "Unassigned",
+      "Alan Agent",
+      "Beth Admin",
+    ]);
+  });
+
+  test("filters by status, category and assignee on the server, keeping the sort", async () => {
+    const get = mockGetTickets(() => ok({ tickets }));
+    renderWithQuery(<TicketsPage />);
+    await screen.findByRole("table");
+    await within(screen.getByRole("combobox", { name: "Assignee" })).findByRole("option", { name: "Alan Agent" });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Status" }), { target: { value: TicketStatus.RESOLVED } });
+    await waitFor(() =>
+      expect(lastTicketParams(get)).toEqual({ status: TicketStatus.RESOLVED, sortBy: "createdAt", sortOrder: "desc" }),
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Category" }), { target: { value: "unclassified" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Assignee" }), { target: { value: "a1" } });
+    await waitFor(() =>
+      expect(lastTicketParams(get)).toEqual({
+        status: TicketStatus.RESOLVED,
+        category: "unclassified",
+        assignee: "a1",
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      }),
+    );
+  });
+
+  test("searches once typing pauses, with the text trimmed", async () => {
+    const get = mockGetTickets(() => ok({ tickets }));
+    renderWithQuery(<TicketsPage />);
+    await screen.findByRole("table");
+
+    const search = screen.getByRole("searchbox", { name: "Search tickets" });
+    fireEvent.change(search, { target: { value: "ref" } });
+    fireEvent.change(search, { target: { value: "  refund " } });
+    // Not sent per keystroke.
+    expect(ticketRequests(get)).toHaveLength(1);
+
+    await waitFor(() => expect(lastTicketParams(get)).toEqual({ q: "refund", sortBy: "createdAt", sortOrder: "desc" }));
+    expect(ticketRequests(get)).toHaveLength(2);
+  });
+
+  test("shows a filtered empty state, and Clear filters brings back all tickets", async () => {
+    const get = mockGetTickets(() => ok({ tickets }), () => ok({ tickets: [] }), () => ok({ tickets }));
+    renderWithQuery(<TicketsPage />);
+    await screen.findByText("Refund for my course");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+
+    const status = screen.getByRole("combobox", { name: "Status" });
+    fireEvent.change(status, { target: { value: TicketStatus.CLOSED } });
+    expect(await screen.findByText("No tickets match these filters.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByText("Refund for my course")).toBeInTheDocument();
+    expect(status).toHaveValue("");
+    expect(lastTicketParams(get)).toEqual({ sortBy: "createdAt", sortOrder: "desc" });
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
   });
 });
