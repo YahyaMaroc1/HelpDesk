@@ -36,6 +36,7 @@ server/   Express 5 + TypeScript, running on Bun
   src/index.ts   starts the server
   src/app.ts     Express app, routes, error handler, serves client/dist in production (and NODE_ENV=test)
   src/routes/    one router per resource, mounted under /api
+  src/**/*.test.ts  route unit tests (bun test, Prisma mocked; see "Server unit tests")
   src/lib/prisma.ts  the shared PrismaClient (import `prisma` from here; never create another)
   src/lib/auth.ts    Better Auth config (email/password, sessions stored in Postgres)
   src/middleware/requireAuth.ts  401s without a session; sets res.locals.user / res.locals.session
@@ -55,7 +56,7 @@ e2e/      Playwright end-to-end tests (runs on Node, not Bun)
 Client components are tested with `bun test` + React Testing Library on happy-dom, with the API stubbed (no server or database). `client/src/pages/UsersPage.test.tsx` is the reference.
 
 **Running**
-- `bun run test` from the root, or from `client/`: `bun run test` (all once), `bun run test:watch` (reruns on save, while writing tests), `bun test UsersPage` (files whose path matches), `bun test -t "empty state"` (tests whose name matches).
+- `bun run test` from the root runs the client and server tests. From `client/`: `bun run test` (all once), `bun run test:watch` (reruns on save, while writing tests), `bun test UsersPage` (files whose path matches), `bun test -t "empty state"` (tests whose name matches).
 - Never run `bun test` from the root: it would also pick up the Playwright specs in `e2e/`.
 - After writing or changing tests, run `bun run test` and `bun run typecheck` (the test runner doesn't type-check).
 
@@ -72,6 +73,15 @@ Client components are tested with `bun test` + React Testing Library on happy-do
 - Query the way users and assistive tech see the page: `getByRole` (with `name`), `getByText`, `within(...)`; avoid class names, test IDs and `container.querySelector`. Use `findBy*` to wait for data, and `queryBy*` with `.not.toBeInTheDocument()` for absence. To wait for something to disappear, use `waitForElementToBeRemoved(el)`, not `waitFor(() => expect(...).not.toBeInTheDocument())`: each failed attempt makes Bun format a happy-dom element for the error message, which can take tens of seconds.
 - Simulate input with `fireEvent` from `@testing-library/react` (`user-event` isn't installed).
 - Build locale-dependent expectations the way the component does (e.g. `new Date(x).toLocaleDateString()`), not hard-coded strings.
+
+## Server unit tests
+
+Route logic (validation, lookups, status codes) is unit-tested with `bun test` in `server/`, without a database or server process. `server/src/routes/tickets.test.ts` is the reference.
+
+- Run with `bun run test` from `server/` (or the root, with the client tests).
+- `mock.module("../lib/prisma.ts", () => ({ prisma }))` with a fake `prisma` of `mock()` functions, then `await import()` the router, so the real client (which needs `DATABASE_URL`) never loads. Reset the mocks in `beforeEach` and give them default results.
+- Mount the router on its own `express()` app behind `express.json()`, `listen(0)` in `beforeAll` (close it in `afterAll`) and call it with `fetch`. Sessions are checked by `requireAuth` in `app.ts`, not by routers, so these tests leave auth out.
+- Assert the status and body, the arguments sent to Prisma, and that nothing is written when a request is rejected.
 
 ## End-to-end tests
 

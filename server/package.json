@@ -6,6 +6,7 @@
     "dev": "bun --watch src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "postinstall": "bun --bun prisma generate",
     "db:generate": "bun --bun prisma generate",
     "db:migrate": "bun --bun prisma migrate dev",

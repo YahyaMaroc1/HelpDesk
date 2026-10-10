@@ -27,6 +27,7 @@
 
 * Playwright for end-to-end tests, against a separate `helpdesk_test` database
 * bun test + React Testing Library (with happy-dom) for client component tests
+* bun test for server route unit tests, with Prisma mocked
 
 ## AI
 
