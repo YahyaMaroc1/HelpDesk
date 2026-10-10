@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import express, { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { Prisma } from "../generated/prisma/client.ts";
-import { MessageDirection, TicketStatus } from "../generated/prisma/enums.ts";
+import { SenderType, TicketStatus } from "../generated/prisma/enums.ts";
 import { prisma } from "../lib/prisma.ts";
 import { validate } from "../lib/validate.ts";
 
@@ -94,7 +94,7 @@ webhooksRouter.post("/inbound-email", async (req, res) => {
   }
 
   const message = {
-    direction: MessageDirection.INBOUND,
+    senderType: SenderType.CUSTOMER,
     body: text,
     senderEmail: from,
     senderName: fromName,

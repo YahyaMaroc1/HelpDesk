@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AddressInfo } from "node:net";
 import express from "express";
-import { TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
+import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
 
 // The router's database calls, stubbed so the tests need no database. Mocked before the router is imported, so
 // lib/prisma.ts (which connects to DATABASE_URL) is never loaded.
@@ -13,13 +13,19 @@ mock.module("../lib/prisma.ts", () => ({ prisma }));
 const { ticketsRouter } = await import("./tickets.ts");
 
 // The router on its own, behind express.json() as in app.ts. Sessions are checked by requireAuth in app.ts, not by
-// the router, so these tests cover the route's own validation and lookups.
+// the router, so these tests cover the route's own validation and lookups. requireAuth's res.locals.user is set to
+// `signedInUser`, which routes read for the author of a reply.
+const signedInUser = { id: "u1", name: "Alan Agent", email: "alan@example.com" };
 let server: ReturnType<ReturnType<typeof express>["listen"]>;
 let baseUrl: string;
 
 beforeAll(() => {
   const app = express();
   app.use(express.json());
+  app.use((_req, res, next) => {
+    res.locals.user = signedInUser;
+    next();
+  });
   app.use("/api/tickets", ticketsRouter);
   server = app.listen(0);
   baseUrl = `http://localhost:${(server.address() as AddressInfo).port}`;
@@ -49,6 +55,40 @@ async function patchTicket(id: string, body: unknown) {
   });
   return { status: res.status, body: (await res.json()) as ResponseBody };
 }
+
+describe("GET /api/tickets/:id", () => {
+  async function getTicket(id: string) {
+    const res = await fetch(`${baseUrl}/api/tickets/${id}`);
+    return { status: res.status, body: (await res.json()) as ResponseBody };
+  }
+
+  test("returns the ticket with its messages oldest first", async () => {
+    prisma.ticket.findUnique.mockResolvedValue(updatedTicket);
+
+    const res = await getTicket("t1");
+
+    expect(res).toEqual({ status: 200, body: { ticket: updatedTicket } });
+    expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "t1" },
+      select: { messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    });
+  });
+
+  test("leaves the email Message-ID out of the messages", async () => {
+    await getTicket("t1");
+
+    const { select } = prisma.ticket.findUnique.mock.calls[0]?.[0] as { select: { messages: { select: object } } };
+    expect(select.messages.select).not.toHaveProperty("emailMessageId");
+  });
+
+  test("answers 404 for a ticket that doesn't exist", async () => {
+    prisma.ticket.findUnique.mockResolvedValue(null);
+
+    const res = await getTicket("missing");
+
+    expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
+  });
+});
 
 describe("PATCH /api/tickets/:id", () => {
   test("assigns the ticket to an active user and returns the updated ticket", async () => {
@@ -162,6 +202,65 @@ describe("PATCH /api/tickets/:id", () => {
     prisma.ticket.findUnique.mockResolvedValue(null);
 
     const res = await patchTicket("missing", { status: TicketStatus.CLOSED });
+
+    expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
+    expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { id: "missing" } });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+});
+
+async function postReply(id: string, body: unknown) {
+  const res = await fetch(`${baseUrl}/api/tickets/${id}/replies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as ResponseBody };
+}
+
+describe("POST /api/tickets/:id/replies", () => {
+  test("saves the reply as an outbound message from the signed-in user and returns the updated ticket", async () => {
+    const res = await postReply("t1", { body: "  Your refund is on its way.\nThanks!  " });
+
+    expect(res).toEqual({ status: 201, body: { ticket: updatedTicket } });
+    expect(prisma.ticket.update).toHaveBeenCalledTimes(1);
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "t1" },
+      data: {
+        messages: {
+          create: {
+            senderType: SenderType.AGENT,
+            body: "Your refund is on its way.\nThanks!",
+            senderEmail: signedInUser.email,
+            senderName: signedInUser.name,
+          },
+        },
+      },
+    });
+  });
+
+  test.each([
+    [{}, "Write a reply"],
+    [{ body: 42 }, "Write a reply"],
+    [{ body: "   \n  " }, "Write a reply"],
+    [{ body: "x".repeat(20_001) }, "Reply must be at most 20,000 characters"],
+  ])("rejects %j", async (body, error) => {
+    const res = await postReply("t1", body);
+
+    expect(res).toEqual({ status: 400, body: { error } });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test("accepts a reply of the maximum length", async () => {
+    const res = await postReply("t1", { body: "x".repeat(20_000) });
+
+    expect(res.status).toBe(201);
+  });
+
+  test("answers 404 for a ticket that doesn't exist", async () => {
+    prisma.ticket.findUnique.mockResolvedValue(null);
+
+    const res = await postReply("missing", { body: "Hello" });
 
     expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
     expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { id: "missing" } });

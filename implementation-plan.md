@@ -19,7 +19,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [ ] 2.1 `User` model: name, email, password hash, role (`ADMIN` / `AGENT`), active flag, timestamps
 - [x] 2.2 `Session` model: session ID, user ID, expiry
 - [x] 2.3 `Ticket` model: subject, sender email and name, status (`OPEN` / `RESOLVED` / `CLOSED`), category (`GENERAL_QUESTION` / `TECHNICAL_QUESTION` / `REFUND_REQUEST`, nullable until classified), AI summary, assigned agent, timestamps
-- [x] 2.4 `Message` model: ticket ID, direction (inbound / outbound), body, sender, email message ID (for threading), timestamp
+- [x] 2.4 `Message` model: ticket ID, sender type (customer / agent), body, sender, email message ID (for threading), timestamp
 - [ ] 2.5 `KnowledgeBaseArticle` model: title, content, timestamps
 - [ ] 2.6 Run the first migration
 - [ ] 2.7 Seed script: create the admin from environment variables, plus a few knowledge base articles
@@ -86,10 +86,10 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 ## Phase 7 – Outbound Email
 
 - [ ] 7.1 Email service wrapper for the chosen provider
-- [ ] 7.2 `POST /api/tickets/:id/replies`: send the reply and save it as an outbound message
+- [ ] 7.2 `POST /api/tickets/:id/replies`: send the reply and save it as an outbound message (saving is done; sending waits for 7.1)
 - [ ] 7.3 Set `In-Reply-To` / `References` headers so replies thread in the customer's inbox
 - [ ] 7.4 Option to mark the ticket Resolved when sending a reply
-- [ ] 7.5 Client: reply box on the ticket detail page
+- [x] 7.5 Client: reply box on the ticket detail page
 - [ ] 7.6 Handle send failures: show an error and don't save the message as sent
 
 **Done when:** an agent can reply from the app and the customer receives it in the same email thread.

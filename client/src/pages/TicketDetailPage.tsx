@@ -1,25 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, CircleAlertIcon } from "lucide-react";
 import { Link, useParams } from "react-router";
-import { TicketAssigneeSelect } from "@/components/TicketAssigneeSelect.tsx";
-import { TicketFieldSelect, type TicketFieldOption } from "@/components/TicketFieldSelect.tsx";
+import { ReplyThread } from "@/components/ReplyThread.tsx";
+import { TicketDetails } from "@/components/TicketDetails.tsx";
+import { TicketReplyForm } from "@/components/TicketReplyForm.tsx";
+import { UpdateTicket } from "@/components/UpdateTicket.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
-import { Card, CardContent, CardHeader } from "@/components/ui/card.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { api, apiErrorMessage } from "@/lib/api.ts";
-import {
-  MessageDirection,
-  TicketCategory,
-  TicketStatus,
-  ticketCategoryLabels,
-  ticketStatusLabels,
-} from "@/lib/ticket.ts";
-import { formatTicketDate, type TicketListItem } from "./TicketsPage.tsx";
+import type { SenderType } from "@/lib/ticket.ts";
+import type { TicketListItem } from "./TicketsPage.tsx";
 
 // Shape of GET /api/tickets/:id (server/src/routes/tickets.ts).
 export type TicketMessage = {
   id: string;
-  direction: MessageDirection;
+  senderType: SenderType;
   body: string;
   senderEmail: string;
   senderName: string | null;
@@ -31,16 +26,6 @@ export type TicketDetail = TicketListItem & {
   messages: TicketMessage[];
 };
 
-const statusOptions: TicketFieldOption[] = Object.values(TicketStatus).map((status) => ({
-  value: status,
-  label: ticketStatusLabels[status],
-}));
-const categoryOptions: TicketFieldOption[] = Object.values(TicketCategory).map((category) => ({
-  value: category,
-  label: ticketCategoryLabels[category],
-}));
-const unclassifiedOption: TicketFieldOption = { value: "", label: "Unclassified", disabled: true };
-
 export function TicketDetailPage() {
   const { id } = useParams() as { id: string };
 
@@ -48,6 +33,9 @@ export function TicketDetailPage() {
     queryKey: ["tickets", id],
     queryFn: async ({ signal }) => (await api.get<{ ticket: TicketDetail }>(`/tickets/${id}`, { signal })).data.ticket,
   });
+
+  // TicketDetails shows the first message, the customer's original email; the rest of the thread follows it.
+  const replies = ticket?.messages.slice(1) ?? [];
 
   return (
     <div className="space-y-6">
@@ -66,121 +54,32 @@ export function TicketDetailPage() {
       {!ticket && !error && <TicketDetailSkeleton />}
 
       {ticket && (
-        <>
-          <h1 className="text-2xl font-semibold break-words">{ticket.subject}</h1>
+        // On wide screens the properties sit to the right of everything else. On narrow screens they come between
+        // the details and the replies, so the controls aren't below a long conversation.
+        <div className="grid items-start gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <TicketDetails ticket={ticket} />
 
-          <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <div className="space-y-6">
-              <dl className="grid gap-4 text-sm sm:grid-cols-3">
-                <TicketField label="From">
-                  {ticket.senderName ? (
-                    <>
-                      <div>{ticket.senderName}</div>
-                      <div className="text-muted-foreground">{ticket.senderEmail}</div>
-                    </>
-                  ) : (
-                    ticket.senderEmail
-                  )}
-                </TicketField>
-                <TicketField label="Created">{formatTicketDate(ticket.createdAt)}</TicketField>
-                <TicketField label="Updated">{formatTicketDate(ticket.updatedAt)}</TicketField>
-              </dl>
+          <aside aria-label="Ticket properties" className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+            <UpdateTicket ticket={ticket} />
+          </aside>
 
-              {ticket.summary && (
-                <section aria-labelledby="ticket-summary" className="space-y-2">
-                  <h2 id="ticket-summary" className="text-lg font-semibold">
-                    Summary
-                  </h2>
-                  <p className="text-sm whitespace-pre-wrap">{ticket.summary}</p>
-                </section>
-              )}
-
-              <section aria-labelledby="ticket-messages" className="space-y-4">
-                <h2 id="ticket-messages" className="text-lg font-semibold">
-                  Messages
+          <div className="space-y-6 lg:col-start-1">
+            {ticket.summary && (
+              <section aria-labelledby="ticket-summary" className="space-y-2">
+                <h2 id="ticket-summary" className="text-lg font-semibold">
+                  Summary
                 </h2>
-                {ticket.messages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No messages.</p>
-                ) : (
-                  <ol className="space-y-4">
-                    {ticket.messages.map((message) => (
-                      <li key={message.id}>
-                        <MessageCard message={message} />
-                      </li>
-                    ))}
-                  </ol>
-                )}
+                <p className="text-sm whitespace-pre-wrap">{ticket.summary}</p>
               </section>
-            </div>
+            )}
 
-            {/* Above the thread on narrow screens, so the controls aren't below a long conversation. */}
-            <aside aria-label="Ticket properties" className="order-first lg:order-none">
-              <Card size="sm">
-                <CardContent>
-                  <dl className="grid gap-4 text-sm">
-                    <TicketField label="Status">
-                      <TicketFieldSelect
-                        ticketId={ticket.id}
-                        label="Status"
-                        value={ticket.status}
-                        options={statusOptions}
-                        toUpdate={(value) => ({ status: value as TicketStatus })}
-                        errorPrefix="Couldn't change the status"
-                      />
-                    </TicketField>
-                    <TicketField label="Category">
-                      <TicketFieldSelect
-                        ticketId={ticket.id}
-                        label="Category"
-                        value={ticket.category ?? ""}
-                        // A category can't be cleared, so "Unclassified" is only there to show an unclassified ticket.
-                        options={ticket.category ? categoryOptions : [unclassifiedOption, ...categoryOptions]}
-                        toUpdate={(value) => ({ category: value as TicketCategory })}
-                        errorPrefix="Couldn't change the category"
-                      />
-                    </TicketField>
-                    <TicketField label="Assignee">
-                      <TicketAssigneeSelect ticket={ticket} />
-                    </TicketField>
-                  </dl>
-                </CardContent>
-              </Card>
-            </aside>
+            <ReplyThread replies={replies} />
+
+            <TicketReplyForm ticketId={ticket.id} />
           </div>
-        </>
+        </div>
       )}
     </div>
-  );
-}
-
-function TicketField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{children}</dd>
-    </div>
-  );
-}
-
-// One email in the thread. The body is plain text, so line breaks are kept as they arrived.
-function MessageCard({ message }: { message: TicketMessage }) {
-  const inbound = message.direction === MessageDirection.INBOUND;
-  return (
-    <Card className={inbound ? undefined : "bg-muted"}>
-      <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="text-sm">
-          <span className="font-medium">{message.senderName ?? message.senderEmail}</span>
-          {message.senderName && <span className="text-muted-foreground"> &lt;{message.senderEmail}&gt;</span>}
-          <span className="text-muted-foreground"> · {inbound ? "Customer" : "Reply"}</span>
-        </div>
-        <time dateTime={message.createdAt} className="text-xs text-muted-foreground">
-          {formatTicketDate(message.createdAt)}
-        </time>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm break-words whitespace-pre-wrap">{message.body}</p>
-      </CardContent>
-    </Card>
   );
 }
 

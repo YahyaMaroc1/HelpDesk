@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "../generated/prisma/client.ts";
-import { TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
+import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
+import type { Session } from "../lib/auth.ts";
 import { prisma } from "../lib/prisma.ts";
 import { validate } from "../lib/validate.ts";
 
@@ -136,7 +137,7 @@ const ticketDetailFields = {
   summary: true,
   updatedAt: true,
   messages: {
-    select: { id: true, direction: true, body: true, senderEmail: true, senderName: true, createdAt: true },
+    select: { id: true, senderType: true, body: true, senderEmail: true, senderName: true, createdAt: true },
     // Oldest first, as a thread reads. The id breaks ties between messages saved in the same millisecond.
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   },
@@ -197,4 +198,47 @@ ticketsRouter.patch("/:id", async (req, res) => {
     select: ticketDetailFields,
   });
   res.json({ ticket });
+});
+
+// Keep in sync with the reply form on client/src/components/TicketReplyForm.tsx.
+const replyMessage = "Write a reply";
+const maxReplyLength = 20_000;
+const replySchema = z.object({
+  body: z
+    .string({ error: replyMessage })
+    .trim()
+    .min(1, replyMessage)
+    .max(maxReplyLength, `Reply must be at most ${maxReplyLength.toLocaleString("en-US")} characters`),
+});
+
+// Adds the signed-in user's reply to the thread as an outbound message and returns the updated ticket, as
+// GET /api/tickets/:id does. Not emailed yet: sending waits for the email provider (implementation plan 7.1).
+ticketsRouter.post("/:id/replies", async (req, res) => {
+  const params = validate(ticketParamsSchema, req.params, res, 404);
+  if (!params) return;
+  const body = validate(replySchema, req.body, res);
+  if (!body) return;
+  const user: Session["user"] = res.locals.user;
+
+  if (!(await prisma.ticket.findUnique({ where: { id: params.id }, select: { id: true } }))) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  // Creating the message through the ticket also bumps the ticket's updatedAt.
+  const ticket = await prisma.ticket.update({
+    where: { id: params.id },
+    data: {
+      messages: {
+        create: {
+          senderType: SenderType.AGENT,
+          body: body.body,
+          senderEmail: user.email,
+          senderName: user.name,
+        },
+      },
+    },
+    select: ticketDetailFields,
+  });
+  res.status(201).json({ ticket });
 });

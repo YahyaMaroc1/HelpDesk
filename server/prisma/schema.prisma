@@ -25,9 +25,10 @@ enum TicketCategory {
   REFUND_REQUEST
 }
 
-enum MessageDirection {
-  INBOUND
-  OUTBOUND
+// Who wrote a message: the customer (an inbound email) or an agent (a reply from the app).
+enum SenderType {
+  CUSTOMER
+  AGENT
 }
 
 model User {
@@ -130,7 +131,7 @@ model Message {
   id             String           @id @default(cuid())
   ticketId       String
   ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  direction      MessageDirection
+  senderType     SenderType
   body           String
   senderEmail    String
   senderName     String?

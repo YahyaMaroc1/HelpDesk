@@ -5,7 +5,7 @@
 // unassigned) vary; the data is the same on every run. Sample tickets are recognised by their messages' Message-IDs
 // (@sample.helpdesk.invalid), so --reset never touches real tickets.
 import { parseArgs } from "node:util";
-import { MessageDirection, TicketCategory, TicketStatus } from "../src/generated/prisma/enums.ts";
+import { SenderType, TicketCategory, TicketStatus } from "../src/generated/prisma/enums.ts";
 import { prisma } from "../src/lib/prisma.ts";
 
 const { values } = parseArgs({ options: { reset: { type: "boolean", default: false } } });
@@ -111,7 +111,7 @@ for (let i = 0; i < COUNT; i++) {
       messages: {
         create: [
           {
-            direction: MessageDirection.INBOUND,
+            senderType: SenderType.CUSTOMER,
             body: `Hi,\n\n${body}\n\nThanks,\n${senderName ?? senderEmail}`,
             senderEmail,
             senderName,
@@ -122,7 +122,7 @@ for (let i = 0; i < COUNT; i++) {
           ...(agent && status !== TicketStatus.OPEN
             ? [
                 {
-                  direction: MessageDirection.OUTBOUND,
+                  senderType: SenderType.AGENT,
                   body: `Hi ${senderName?.split(" ")[0] ?? "there"},\n\nThanks for reaching out. We've looked into this and it should be sorted now. Let us know if anything else comes up.\n\nBest,\n${agent.name}`,
                   senderEmail: agent.email,
                   senderName: agent.name,

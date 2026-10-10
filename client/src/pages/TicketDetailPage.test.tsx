@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import type { TicketUpdate } from "@/components/TicketFieldSelect.tsx";
 import { api } from "@/lib/api.ts";
 import { queryClient } from "@/lib/query-client.ts";
-import { MessageDirection, TicketCategory, TicketStatus } from "@/lib/ticket.ts";
+import { SenderType, TicketCategory, TicketStatus } from "@/lib/ticket.ts";
 import { renderWithQuery } from "@/test/render-with-query.tsx";
 import { TicketDetailPage, type TicketDetail } from "./TicketDetailPage.tsx";
 import { formatTicketDate } from "./TicketsPage.tsx";
@@ -24,7 +24,7 @@ const ticket: TicketDetail = {
   messages: [
     {
       id: "m1",
-      direction: MessageDirection.INBOUND,
+      senderType: SenderType.CUSTOMER,
       body: "Hi,\nI bought the wrong course.\nCan I get a refund?",
       senderEmail: "jane@example.com",
       senderName: "Jane Doe",
@@ -32,7 +32,7 @@ const ticket: TicketDetail = {
     },
     {
       id: "m2",
-      direction: MessageDirection.OUTBOUND,
+      senderType: SenderType.AGENT,
       body: "Of course, the refund is on its way.",
       senderEmail: "support@example.com",
       senderName: null,
@@ -127,17 +127,26 @@ describe("TicketDetailPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  test("shows the messages oldest first, keeping their line breaks", async () => {
+  test("shows the original message, then the replies after it", async () => {
     mockGet(() => ok({ ticket }));
     renderPage();
 
-    const thread = within(await screen.findByRole("list"));
-    const items = thread.getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Jane Doe <jane@example.com> · Customer");
-    expect(within(items[0]!).getByText(/I bought the wrong course/).textContent).toBe(ticket.messages[0]!.body);
-    expect(items[1]).toHaveTextContent("support@example.com · Reply");
-    expect(items[1]).toHaveTextContent("Of course, the refund is on its way.");
+    const message = await screen.findByRole("region", { name: "Message" });
+    expect(message).toHaveTextContent("I bought the wrong course.");
+    const replies = within(screen.getByRole("region", { name: "Replies" })).getAllByRole("listitem");
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toHaveTextContent("support@example.com · Agent");
+    expect(replies[0]).toHaveTextContent("Of course, the refund is on its way.");
+    expect(within(screen.getByRole("region", { name: "Replies" })).queryByText(/wrong course/)).not.toBeInTheDocument();
+  });
+
+  test("says when there are no replies yet", async () => {
+    mockGet(() => ok({ ticket: { ...ticket, messages: ticket.messages.slice(0, 1) } }));
+    renderPage();
+
+    const replies = await screen.findByRole("region", { name: "Replies" });
+    expect(replies).toHaveTextContent("No replies yet.");
+    expect(within(replies).queryByRole("list")).not.toBeInTheDocument();
   });
 
   test("shows an unclassified, unassigned ticket without a summary", async () => {
@@ -321,5 +330,46 @@ describe("TicketDetailPage status and category", () => {
     fireEvent.change(select, { target: { value: TicketCategory.GENERAL_QUESTION } });
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't change the category: Invalid category");
     expect(select).toHaveValue(TicketCategory.REFUND_REQUEST);
+  });
+});
+
+// The form itself (validation, sending state, errors) is covered by components/TicketReplyForm.test.tsx.
+describe("TicketDetailPage reply", () => {
+  const replyBox = () => screen.findByRole("textbox", { name: "Reply" });
+  const sendButton = () => screen.getByRole("button", { name: "Send reply" });
+  const newReply: TicketDetail["messages"][number] = {
+    id: "m3",
+    senderType: SenderType.AGENT,
+    body: "Anything else I can help with?",
+    senderEmail: "alan@example.com",
+    senderName: "Alan Agent",
+    createdAt: "2026-10-10T12:00:00.000Z",
+  };
+
+  // Serves the ticket as it is on the "server", which a successful POST /tickets/:id/replies adds `newReply` to, so
+  // refetches see it.
+  function mockReplyApi() {
+    let current = ticket;
+    mockGet(() => ok({ ticket: current }));
+    return spyOn(api, "post").mockImplementation((() => {
+      current = { ...current, messages: [...current.messages, newReply] };
+      return ok({ ticket: current });
+    }) as typeof api.post);
+  }
+
+  test("shows a sent reply at the end of the thread", async () => {
+    const post = mockReplyApi();
+    renderPage();
+    const box = await replyBox();
+
+    fireEvent.change(box, { target: { value: newReply.body } });
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/tickets/t1/replies", { body: newReply.body }));
+    const reply = (await screen.findByText(newReply.body)).closest("li");
+    expect(reply).toHaveTextContent("Alan Agent <alan@example.com> · Agent");
+    const replies = within(screen.getByRole("region", { name: "Replies" })).getAllByRole("listitem");
+    expect(replies).toHaveLength(2);
+    expect(replies[1]).toBe(reply!);
   });
 });
