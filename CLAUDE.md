@@ -49,11 +49,21 @@ e2e/      Playwright end-to-end tests (runs on Node, not Bun)
   tests/       *.spec.ts files
 ```
 
+## Which tests to write
+
+**Unit tests by default; e2e tests only for what unit tests can't check.** This is a strict rule, not a preference.
+
+- Cover every behavior with unit tests: client work with component tests, server routes with server unit tests (both below). That includes validation, status codes, lookups and what gets written, rendering states, what a form or mutation sends, and what a role sees given a stubbed session.
+- Write an e2e test only when the behavior can't be checked with the API, Prisma or Better Auth stubbed:
+  - real sessions and cookies: sign-in/sign-out, session invalidation (deleted user, changed password), origin checks, sign-in rules Better Auth applies (e.g. case-insensitive email)
+  - that a server-side guard is wired to a route: `requireAuth` / `requireAdmin` on a router mount (one 401/403 check per mount, not per route)
+  - flows across systems: e.g. an emailed reply arriving through the webhook and showing on the ticket page, the signed-in user recorded as a reply's sender
+- Never write an e2e test for something a unit test covers or could cover. If the unit test is missing, write it instead. Before adding an e2e test, say what it checks that no unit test can; if you can't, don't add it.
+- When a new unit test covers something an existing e2e test checks, delete that e2e test. Don't keep several e2e tests for one flow either: one test through the real stack is enough.
+
 ## Component tests
 
-**Rely mostly on component tests.** They're the default way to cover client work: fast, no server or database, and they cover a component's states and rendering (loading, error, empty, data, form validation, what a mutation sends, what a role sees given a stubbed session). Write e2e tests only when necessary: a critical flow that only works end to end through the real server, auth and database (e.g. sign-in/sign-out, a server-side role check, a webhook-to-UI flow), and that component tests can't meaningfully cover. Don't add e2e tests for each new page or feature by default, and don't duplicate in e2e what a component test already checks.
-
-Client components are tested with `bun test` + React Testing Library on happy-dom, with the API stubbed (no server or database). `client/src/pages/UsersPage.test.tsx` is the reference.
+Component tests are the default for client work: fast, no server or database. Client components are tested with `bun test` + React Testing Library on happy-dom, with the API stubbed (no server or database). `client/src/pages/UsersPage.test.tsx` is the reference.
 
 **Running**
 - `bun run test` from the root runs the client and server tests. From `client/`: `bun run test` (all once), `bun run test:watch` (reruns on save, while writing tests), `bun test UsersPage` (files whose path matches), `bun test -t "empty state"` (tests whose name matches).
@@ -72,6 +82,7 @@ Client components are tested with `bun test` + React Testing Library on happy-do
 - Cover each state the component renders: pending (a never-settling promise), data, empty and error. Use 4xx errors for error states: 5xx and network errors are retried once with a delay, which slows the test.
 - Query the way users and assistive tech see the page: `getByRole` (with `name`), `getByText`, `within(...)`; avoid class names, test IDs and `container.querySelector`. Use `findBy*` to wait for data, and `queryBy*` with `.not.toBeInTheDocument()` for absence. To wait for something to disappear, use `waitForElementToBeRemoved(el)`, not `waitFor(() => expect(...).not.toBeInTheDocument())`: each failed attempt makes Bun format a happy-dom element for the error message, which can take tens of seconds.
 - Simulate input with `fireEvent` from `@testing-library/react` (`user-event` isn't installed).
+- Better Auth's `authClient` can't be created under happy-dom (it needs the page's URL), so for components that use it, `mock.module("@/lib/auth-client.ts", ...)` with a stub `useSession` / `signIn.email` before `await import()`-ing the component. `pages/LoginPage.test.tsx` is the example.
 - Build locale-dependent expectations the way the component does (e.g. `new Date(x).toLocaleDateString()`), not hard-coded strings.
 
 ## Server unit tests
@@ -80,12 +91,13 @@ Route logic (validation, lookups, status codes) is unit-tested with `bun test` i
 
 - Run with `bun run test` from `server/` (or the root, with the client tests).
 - `mock.module("../lib/prisma.ts", () => ({ prisma }))` with a fake `prisma` of `mock()` functions, then `await import()` the router, so the real client (which needs `DATABASE_URL`) never loads. Reset the mocks in `beforeEach` and give them default results.
-- Mount the router on its own `express()` app behind `express.json()`, `listen(0)` in `beforeAll` (close it in `afterAll`) and call it with `fetch`. Sessions are checked by `requireAuth` in `app.ts`, not by routers, so these tests leave auth out.
+- Mount the router on its own `express()` app behind `express.json()`, `listen(0)` in `beforeAll` (close it in `afterAll`) and call it with `fetch`. Sessions are checked by `requireAuth` in `app.ts`, not by routers, so these tests leave auth out. A route that reads `res.locals.user` or `res.locals.session` gets them from a small middleware in the test app (see the replies tests in `tickets.test.ts`).
+- Routes that call Better Auth (`routes/users.ts`) also get `mock.module("../lib/auth.ts", ...)` with a fake `auth.$context` (`internalAdapter`, `password.hash`) and `passwordLength`; see `users.test.ts`. The webhook router is mounted without `express.json()`, as in `app.ts`, and its tests set `INBOUND_EMAIL_SECRET`; see `webhooks.test.ts`.
 - Assert the status and body, the arguments sent to Prisma, and that nothing is written when a request is rejected.
 
 ## End-to-end tests
 
-- **Use sparingly.** Only for flows that need the real server, auth and database and that component tests can't cover (see "Component tests" above). If unsure whether a change warrants one, prefer a component test, and ask before adding e2e coverage.
+- **Last resort.** Only for what unit tests can't check; see "Which tests to write" above. Start each new spec with a comment saying what it checks that the unit tests don't. If unsure whether a change warrants one, write unit tests and ask before adding e2e coverage.
 - **Write e2e tests with the `e2e-test-writer` subagent** (`.claude/agents/e2e-test-writer.md`, Sonnet). Don't write them inline. Delegate whenever a task adds, extends or fixes Playwright tests. In the prompt, say what to cover (pages, flows, roles, edge cases) and point to the relevant routes and components; it starts without this conversation's context. It knows the test setup and conventions, checks its work with `bun run typecheck` and `bunx playwright test --list`, but doesn't run the tests. Afterwards, review its report and changes, pass on the command it gives for running the tests (e.g. `! bun run test:e2e`), and ask the user to run it.
 - `bun run test:e2e` (root) or `bun run test` / `test:ui` / `report` from `e2e/`. Browsers: `bunx playwright install chromium` from `e2e/`.
 - The tests use their own database, `TEST_DATABASE_URL` in `e2e/.env` (copy `e2e/.env.example`). The name must end in `_test`, or `test-env.ts` refuses to run, because every run wipes it.
@@ -147,7 +159,7 @@ Run from the project root:
 
 - No email provider is chosen yet (task 6.1). `POST /api/webhooks/inbound-email` (`server/src/routes/webhooks.ts`) takes a provider-neutral JSON email: `from`, `fromName?`, `subject?`, `text`, `messageId`, and the raw `inReplyTo?` / `references?` headers. A provider adapter will translate its payload into this shape.
 - It's not session-authenticated: every request needs the `X-Webhook-Secret` header matching `INBOUND_EMAIL_SECRET` (401 otherwise; 503 if the variable is unset). The router is mounted before the app-wide `express.json()` so it checks the secret first and accepts bodies up to 1 MB.
-- New email → 201 `{ ticketId, result: "created" }` (an `OPEN` ticket with its first `INBOUND` message). A reply whose `In-Reply-To`/`References` matches a stored `Message.emailMessageId` → 200 `"appended"` to that ticket, reopening it if `RESOLVED`. A repeated Message-ID → 200 `"duplicate"` (unique index, so concurrent redeliveries are safe too). Message-IDs are stored without angle brackets.
+- New email → 201 `{ ticketId, result: "created" }` (an `OPEN` ticket with its first `CUSTOMER` message). A reply whose `In-Reply-To`/`References` matches a stored `Message.emailMessageId` → 200 `"appended"` to that ticket, reopening it if `RESOLVED`. A repeated Message-ID → 200 `"duplicate"` (unique index, so concurrent redeliveries are safe too). Message-IDs are stored without angle brackets.
 - `bun run email:sample` (from `server/`, needs the API running) posts a sample email; `--reply-to <Message-ID>` sends a reply to it. `API_URL` targets another server.
 - `bun run tickets:sample` (from `server/`) inserts 100 varied sample tickets into the dev database through Prisma (statuses, categories incl. unclassified, assignees from the active users incl. unassigned, dates over the last 90 days), for trying out sorting and filtering. It refuses if they exist; `--reset` replaces them. They are marked by `@sample.helpdesk.invalid` Message-IDs, so `--reset` leaves other tickets alone.
 

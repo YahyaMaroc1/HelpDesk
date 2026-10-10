@@ -1,8 +1,10 @@
 import { expect, request as requestFactory, test, type APIRequestContext, type Page } from "@playwright/test";
-import { adminAuthFile, testAdmin, testAgent, testEscalationAgent } from "../test-env.ts";
+import { adminAuthFile, testAdmin } from "../test-env.ts";
 
-// Happy paths of user management through the Users page: read, create, update and delete.
-// Validation, permission and failure cases live in users.spec.ts and delete-user.spec.ts.
+// User management through the Users page, checked against real Better Auth sign-ins: a user created, edited and
+// deleted in the UI can (or can no longer) sign in, and editing keeps or replaces the password as it should. The
+// page's states and the API's validation are unit-tested (client/src/pages/UsersPage.test.tsx,
+// components/UserForm.test.tsx, server/src/routes/users.test.ts).
 
 type ApiUser = { id: string; name: string; email: string; role: "ADMIN" | "AGENT"; createdAt: string };
 
@@ -100,31 +102,6 @@ test.describe("User management", () => {
     await expect(page.getByRole("table")).toBeVisible();
   });
 
-  test("lists the seeded admin and agents with name, email and role badge", async ({ page }) => {
-    await expectRow(page, testAdmin, "Admin");
-    await expectRow(page, testAgent);
-    await expectRow(page, testEscalationAgent);
-  });
-
-  test("creates an agent from the New user dialog, who can then sign in", async ({ page, playwright, baseURL }) => {
-    const name = uniqueName("Created Agent");
-    const email = uniqueEmail("create");
-    await createViaDialog(page, { name, email: email.toUpperCase(), password: originalPassword });
-
-    await expectRow(page, { name, email: email.toLowerCase() });
-
-    const agentContext = await newSignedOutContext(playwright, baseURL);
-    try {
-      const signIn = await agentContext.post("/api/auth/sign-in/email", {
-        data: { email: email.toLowerCase(), password: originalPassword },
-      });
-      expect(signIn.status()).toBe(200);
-      expect((await agentContext.get("/api/me")).status()).toBe(200);
-    } finally {
-      await agentContext.dispose();
-    }
-  });
-
   test("edits name and email and keeps the original password", async ({ page, request, playwright, baseURL }) => {
     const agent = await createAgent(request, "edit-details");
     await page.reload();
@@ -170,55 +147,6 @@ test.describe("User management", () => {
 
     expect(await signInStatus(playwright, baseURL, agent.email, changedPassword)).toBe(200);
     expect(await signInStatus(playwright, baseURL, agent.email, originalPassword)).toBe(401);
-  });
-
-  test("reopening Edit shows the saved values and a blank password", async ({ page, request }) => {
-    const agent = await createAgent(request, "edit-reopen");
-    await page.reload();
-
-    const updated = { name: uniqueName("Saved Agent"), email: uniqueEmail("edit-reopen-new") };
-    await editViaDialog(page, agent, { ...updated, password: changedPassword });
-
-    await rowFor(page, updated.email).getByRole("button", { name: `Edit ${updated.name}` }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit user" });
-    await expect(dialog.getByLabel("Name")).toHaveValue(updated.name);
-    await expect(dialog.getByLabel("Email")).toHaveValue(updated.email);
-    await expect(dialog.getByLabel("New password")).toHaveValue("");
-    await expect(dialog.getByLabel("New password")).toHaveAccessibleDescription(
-      "Leave blank to keep the current password.",
-    );
-    await expect(dialog.getByRole("button", { name: "Save changes" })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
-  });
-
-  test("pre-fills the Edit dialog with the user's current name and email", async ({ page, request }) => {
-    const agent = await createAgent(request, "edit-prefill");
-    await page.reload();
-
-    await rowFor(page, agent.email).getByRole("button", { name: `Edit ${agent.name}` }).click();
-    const dialog = page.getByRole("dialog", { name: "Edit user" });
-    await expect(dialog.getByLabel("Name")).toHaveValue(agent.name);
-    await expect(dialog.getByLabel("Email")).toHaveValue(agent.email);
-    await expect(dialog.getByLabel("New password")).toHaveValue("");
-  });
-
-  test("deletes an agent: the row disappears, stays gone after a reload and leaves the API list", async ({
-    page,
-    request,
-  }) => {
-    const agent = await createAgent(request, "delete");
-    await page.reload();
-    await expectRow(page, agent);
-
-    await deleteViaDialog(page, agent);
-    await expect(rowFor(page, agent.email)).toHaveCount(0);
-
-    await page.reload();
-    await expectRow(page, testAdmin, "Admin");
-    await expect(rowFor(page, agent.email)).toHaveCount(0);
-
-    const users = await listUsers(request);
-    expect(users.some((u) => u.id === agent.id || u.email === agent.email)).toBe(false);
   });
 
   test("creates, edits and deletes the same user through the UI", async ({ page, request, playwright, baseURL }) => {

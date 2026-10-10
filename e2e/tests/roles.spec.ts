@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminAuthFile, agentAuthFile, testAdmin, testAgent } from "../test-env.ts";
+import { adminAuthFile, agentAuthFile, testAgent } from "../test-env.ts";
 
 test.describe("admin", () => {
   test.use({ storageState: adminAuthFile });
@@ -9,14 +9,6 @@ test.describe("admin", () => {
     await page.getByRole("link", { name: "Users" }).click();
     await expect(page).toHaveURL("/users");
     await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
-  });
-
-  test("/api/me returns the ADMIN role", async ({ request }) => {
-    const response = await request.get("/api/me");
-    expect(response.status()).toBe(200);
-    const body = JSON.stringify(await response.json());
-    expect(body).toContain(testAdmin.email);
-    expect(body).toContain('"role":"ADMIN"');
   });
 });
 
@@ -33,13 +25,5 @@ test.describe("agent", () => {
     await page.goto("/users");
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
-  });
-
-  test("/api/me returns the AGENT role", async ({ request }) => {
-    const response = await request.get("/api/me");
-    expect(response.status()).toBe(200);
-    const body = JSON.stringify(await response.json());
-    expect(body).toContain(testAgent.email);
-    expect(body).toContain('"role":"AGENT"');
   });
 });

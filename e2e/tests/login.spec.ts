@@ -9,27 +9,6 @@ test.describe("login form", () => {
     await expect(page.getByText("Sign in to HelpDesk")).toBeVisible();
   });
 
-  test("shows required messages on an empty submit", async ({ page }) => {
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText("Email is required")).toBeVisible();
-    await expect(page.getByText("Password is required")).toBeVisible();
-    await expect(page).toHaveURL(/\/login$/);
-  });
-
-  test("rejects a malformed email", async ({ page }) => {
-    await page.getByLabel("Email").fill("not-an-email");
-    await page.getByLabel("Password").fill("whatever");
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText("Enter a valid email address")).toBeVisible();
-  });
-
-  test("trims whitespace around the email", async ({ page }) => {
-    await page.getByLabel("Email").fill(`  ${testAdmin.email}  `);
-    await page.getByLabel("Password").fill(testAdmin.password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL("/");
-  });
-
   test("treats the email as case-insensitive", async ({ page }) => {
     await page.getByLabel("Email").fill(testAdmin.email.toUpperCase());
     await page.getByLabel("Password").fill(testAdmin.password);
