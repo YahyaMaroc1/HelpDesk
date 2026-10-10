@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AddressInfo } from "node:net";
 import express from "express";
+import { TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
 
 // The router's database calls, stubbed so the tests need no database. Mocked before the router is imported, so
 // lib/prisma.ts (which connects to DATABASE_URL) is never loaded.
@@ -88,7 +89,6 @@ describe("PATCH /api/tickets/:id", () => {
   });
 
   test.each([
-    ["a missing assignedToId", {}],
     ["an empty string", { assignedToId: "" }],
     ["only whitespace", { assignedToId: "   " }],
     ["a number", { assignedToId: 42 }],
@@ -102,10 +102,66 @@ describe("PATCH /api/tickets/:id", () => {
     expect(prisma.ticket.update).not.toHaveBeenCalled();
   });
 
+  test("changes the status without touching the other fields", async () => {
+    const res = await patchTicket("t1", { status: TicketStatus.RESOLVED });
+
+    expect(res.status).toBe(200);
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "t1" },
+      data: { status: TicketStatus.RESOLVED, category: undefined, assignedToId: undefined },
+    });
+  });
+
+  test("changes the category", async () => {
+    const res = await patchTicket("t1", { category: TicketCategory.TECHNICAL_QUESTION });
+
+    expect(res.status).toBe(200);
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
+      data: { status: undefined, category: TicketCategory.TECHNICAL_QUESTION, assignedToId: undefined },
+    });
+  });
+
+  test("changes several fields at once", async () => {
+    await patchTicket("t1", { status: TicketStatus.CLOSED, category: TicketCategory.REFUND_REQUEST, assignedToId: "u1" });
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
+      data: { status: TicketStatus.CLOSED, category: TicketCategory.REFUND_REQUEST, assignedToId: "u1" },
+    });
+  });
+
+  test("rejects a request that changes nothing", async () => {
+    const res = await patchTicket("t1", {});
+
+    expect(res).toEqual({ status: 400, body: { error: "Nothing to update" } });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["an unknown status", { status: "PENDING" }, "Invalid status"],
+    ["a lowercase status", { status: "open" }, "Invalid status"],
+    ["a null status", { status: null }, "Invalid status"],
+    ["an unknown category", { category: "BILLING" }, "Invalid category"],
+    // Tickets only start unclassified; agents can't clear the category.
+    ["a null category", { category: null }, "Invalid category"],
+  ])("rejects %s", async (_case, body, error) => {
+    const res = await patchTicket("t1", body);
+
+    expect(res).toEqual({ status: 400, body: { error } });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test("rejects the whole request when one field is invalid", async () => {
+    const res = await patchTicket("t1", { status: TicketStatus.CLOSED, assignedToId: "" });
+
+    expect(res).toEqual({ status: 400, body: { error: "Choose an assignee" } });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
   test("answers 404 for a ticket that doesn't exist", async () => {
     prisma.ticket.findUnique.mockResolvedValue(null);
 
-    const res = await patchTicket("missing", { assignedToId: "u1" });
+    const res = await patchTicket("missing", { status: TicketStatus.CLOSED });
 
     expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
     expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { id: "missing" } });

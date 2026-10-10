@@ -155,23 +155,30 @@ ticketsRouter.get("/:id", async (req, res) => {
   res.json({ ticket });
 });
 
-// Keep in sync with the assignee picker in client/src/pages/TicketDetailPage.tsx. `assignedToId` is an active user's
-// id (from GET /api/assignees), or null to unassign the ticket.
+// Keep in sync with the pickers on client/src/pages/TicketDetailPage.tsx. Each field is optional and left as it is
+// when missing, but a request must change at least one. `category` can't be cleared: tickets only start
+// unclassified. `assignedToId` is an active user's id (from GET /api/assignees), or null to unassign the ticket.
 const assigneeMessage = "Choose an assignee";
-const updateTicketSchema = z.object({
-  assignedToId: z.union([z.string().trim().min(1, assigneeMessage).max(100, assigneeMessage), z.null()], {
-    error: assigneeMessage,
-  }),
-});
+const updateTicketSchema = z
+  .object({
+    status: z.enum(TicketStatus, { error: "Invalid status" }).optional(),
+    category: z.enum(TicketCategory, { error: "Invalid category" }).optional(),
+    assignedToId: z
+      .union([z.string().trim().min(1, assigneeMessage).max(100, assigneeMessage), z.null()], {
+        error: assigneeMessage,
+      })
+      .optional(),
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), { error: "Nothing to update" });
 
-// Changes a ticket's assignee and returns the updated ticket, as GET /api/tickets/:id does.
+// Changes a ticket's status, category or assignee and returns the updated ticket, as GET /api/tickets/:id does.
 ticketsRouter.patch("/:id", async (req, res) => {
   const params = validate(ticketParamsSchema, req.params, res, 404);
   if (!params) return;
   const body = validate(updateTicketSchema, req.body, res);
   if (!body) return;
   const { id } = params;
-  const { assignedToId } = body;
+  const { status, category, assignedToId } = body;
 
   if (!(await prisma.ticket.findUnique({ where: { id }, select: { id: true } }))) {
     res.status(404).json({ error: "Ticket not found" });
@@ -183,6 +190,11 @@ ticketsRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  const ticket = await prisma.ticket.update({ where: { id }, data: { assignedToId }, select: ticketDetailFields });
+  // Prisma leaves undefined fields unchanged.
+  const ticket = await prisma.ticket.update({
+    where: { id },
+    data: { status, category, assignedToId },
+    select: ticketDetailFields,
+  });
   res.json({ ticket });
 });

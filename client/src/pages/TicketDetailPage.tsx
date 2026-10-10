@@ -2,13 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon, CircleAlertIcon } from "lucide-react";
 import { Link, useParams } from "react-router";
 import { TicketAssigneeSelect } from "@/components/TicketAssigneeSelect.tsx";
-import { TicketStatusBadge } from "@/components/TicketStatusBadge.tsx";
+import { TicketFieldSelect, type TicketFieldOption } from "@/components/TicketFieldSelect.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
 import { Card, CardContent, CardHeader } from "@/components/ui/card.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { api, apiErrorMessage } from "@/lib/api.ts";
-import { MessageDirection, ticketCategoryLabels } from "@/lib/ticket.ts";
+import {
+  MessageDirection,
+  TicketCategory,
+  TicketStatus,
+  ticketCategoryLabels,
+  ticketStatusLabels,
+} from "@/lib/ticket.ts";
 import { formatTicketDate, type TicketListItem } from "./TicketsPage.tsx";
 
 // Shape of GET /api/tickets/:id (server/src/routes/tickets.ts).
@@ -25,6 +30,16 @@ export type TicketDetail = TicketListItem & {
   updatedAt: string;
   messages: TicketMessage[];
 };
+
+const statusOptions: TicketFieldOption[] = Object.values(TicketStatus).map((status) => ({
+  value: status,
+  label: ticketStatusLabels[status],
+}));
+const categoryOptions: TicketFieldOption[] = Object.values(TicketCategory).map((category) => ({
+  value: category,
+  label: ticketCategoryLabels[category],
+}));
+const unclassifiedOption: TicketFieldOption = { value: "", label: "Unclassified", disabled: true };
 
 export function TicketDetailPage() {
   const { id } = useParams() as { id: string };
@@ -52,59 +67,86 @@ export function TicketDetailPage() {
 
       {ticket && (
         <>
-          <div className="space-y-3">
-            <h1 className="text-2xl font-semibold break-words">{ticket.subject}</h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <TicketStatusBadge status={ticket.status} />
-              <Badge variant="outline">
-                {ticket.category ? ticketCategoryLabels[ticket.category] : "Unclassified"}
-              </Badge>
-            </div>
-          </div>
+          <h1 className="text-2xl font-semibold break-words">{ticket.subject}</h1>
 
-          <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <TicketField label="From">
-              {ticket.senderName ? (
-                <>
-                  <div>{ticket.senderName}</div>
-                  <div className="text-muted-foreground">{ticket.senderEmail}</div>
-                </>
-              ) : (
-                ticket.senderEmail
+          <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="space-y-6">
+              <dl className="grid gap-4 text-sm sm:grid-cols-3">
+                <TicketField label="From">
+                  {ticket.senderName ? (
+                    <>
+                      <div>{ticket.senderName}</div>
+                      <div className="text-muted-foreground">{ticket.senderEmail}</div>
+                    </>
+                  ) : (
+                    ticket.senderEmail
+                  )}
+                </TicketField>
+                <TicketField label="Created">{formatTicketDate(ticket.createdAt)}</TicketField>
+                <TicketField label="Updated">{formatTicketDate(ticket.updatedAt)}</TicketField>
+              </dl>
+
+              {ticket.summary && (
+                <section aria-labelledby="ticket-summary" className="space-y-2">
+                  <h2 id="ticket-summary" className="text-lg font-semibold">
+                    Summary
+                  </h2>
+                  <p className="text-sm whitespace-pre-wrap">{ticket.summary}</p>
+                </section>
               )}
-            </TicketField>
-            <TicketField label="Assignee">
-              <TicketAssigneeSelect ticket={ticket} />
-            </TicketField>
-            <TicketField label="Created">{formatTicketDate(ticket.createdAt)}</TicketField>
-            <TicketField label="Updated">{formatTicketDate(ticket.updatedAt)}</TicketField>
-          </dl>
 
-          {ticket.summary && (
-            <section aria-labelledby="ticket-summary" className="space-y-2">
-              <h2 id="ticket-summary" className="text-lg font-semibold">
-                Summary
-              </h2>
-              <p className="text-sm whitespace-pre-wrap">{ticket.summary}</p>
-            </section>
-          )}
+              <section aria-labelledby="ticket-messages" className="space-y-4">
+                <h2 id="ticket-messages" className="text-lg font-semibold">
+                  Messages
+                </h2>
+                {ticket.messages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No messages.</p>
+                ) : (
+                  <ol className="space-y-4">
+                    {ticket.messages.map((message) => (
+                      <li key={message.id}>
+                        <MessageCard message={message} />
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            </div>
 
-          <section aria-labelledby="ticket-messages" className="space-y-4">
-            <h2 id="ticket-messages" className="text-lg font-semibold">
-              Messages
-            </h2>
-            {ticket.messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No messages.</p>
-            ) : (
-              <ol className="space-y-4">
-                {ticket.messages.map((message) => (
-                  <li key={message.id}>
-                    <MessageCard message={message} />
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+            {/* Above the thread on narrow screens, so the controls aren't below a long conversation. */}
+            <aside aria-label="Ticket properties" className="order-first lg:order-none">
+              <Card size="sm">
+                <CardContent>
+                  <dl className="grid gap-4 text-sm">
+                    <TicketField label="Status">
+                      <TicketFieldSelect
+                        ticketId={ticket.id}
+                        label="Status"
+                        value={ticket.status}
+                        options={statusOptions}
+                        toUpdate={(value) => ({ status: value as TicketStatus })}
+                        errorPrefix="Couldn't change the status"
+                      />
+                    </TicketField>
+                    <TicketField label="Category">
+                      <TicketFieldSelect
+                        ticketId={ticket.id}
+                        label="Category"
+                        value={ticket.category ?? ""}
+                        // A category can't be cleared, so "Unclassified" is only there to show an unclassified ticket.
+                        options={ticket.category ? categoryOptions : [unclassifiedOption, ...categoryOptions]}
+                        toUpdate={(value) => ({ category: value as TicketCategory })}
+                        errorPrefix="Couldn't change the category"
+                      />
+                    </TicketField>
+                    <TicketField label="Assignee">
+                      <TicketAssigneeSelect ticket={ticket} />
+                    </TicketField>
+                  </dl>
+                </CardContent>
+              </Card>
+            </aside>
+          </div>
         </>
       )}
     </div>
@@ -148,19 +190,18 @@ function TicketDetailSkeleton() {
     <div role="status">
       <span className="sr-only">Loading ticket…</span>
       <div aria-hidden="true" className="space-y-6">
-        <div className="space-y-3">
-          <Skeleton className="h-8 w-96 max-w-full" />
-          <div className="flex gap-2">
-            <Skeleton className="h-5 w-14 rounded-full" />
-            <Skeleton className="h-5 w-28 rounded-full" />
+        <Skeleton className="h-8 w-96 max-w-full" />
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              {Array.from({ length: 3 }, (_, i) => (
+                <Skeleton key={i} className="h-10" />
+              ))}
+            </div>
+            <Skeleton className="h-40" />
           </div>
+          <Skeleton className="order-first h-48 lg:order-none" />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }, (_, i) => (
-            <Skeleton key={i} className="h-10" />
-          ))}
-        </div>
-        <Skeleton className="h-40" />
       </div>
     </div>
   );

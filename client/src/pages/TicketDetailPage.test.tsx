@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { MemoryRouter, Route, Routes } from "react-router";
+import type { TicketUpdate } from "@/components/TicketFieldSelect.tsx";
 import { api } from "@/lib/api.ts";
 import { queryClient } from "@/lib/query-client.ts";
 import { MessageDirection, TicketCategory, TicketStatus } from "@/lib/ticket.ts";
@@ -83,6 +84,20 @@ afterEach(() => {
   mock.restore();
 });
 
+// Serves the ticket as it is on the "server", which a successful PATCH changes, so refetches see the change.
+// `patchResult` answers the PATCH instead, e.g. with an error.
+function mockTicketApi(patchResult?: () => Promise<unknown>, initial: TicketDetail = ticket) {
+  let current = initial;
+  mockGet(() => ok({ ticket: current }));
+  return spyOn(api, "patch").mockImplementation(((_path: string, update: TicketUpdate) => {
+    if (patchResult) return patchResult();
+    const { assignedToId, ...fields } = update;
+    current = { ...current, ...fields };
+    if (assignedToId !== undefined) current.assignedTo = assignees.find((user) => user.id === assignedToId) ?? null;
+    return ok({ ticket: current });
+  }) as typeof api.patch);
+}
+
 describe("TicketDetailPage", () => {
   test("requests the ticket from the id in the URL", async () => {
     const get = mockGet(() => ok({ ticket }));
@@ -104,8 +119,8 @@ describe("TicketDetailPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { level: 1, name: ticket.subject })).toBeInTheDocument();
-    expect(screen.getByText("Open")).toBeInTheDocument();
-    expect(screen.getByText("Refund request")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveValue(TicketStatus.OPEN);
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue(TicketCategory.REFUND_REQUEST);
     expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("a1");
     expect(screen.getByText(formatTicketDate(ticket.updatedAt), { selector: "dd" })).toBeInTheDocument();
     expect(screen.getByText(ticket.summary!)).toBeInTheDocument();
@@ -130,7 +145,7 @@ describe("TicketDetailPage", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: ticket.subject });
-    expect(screen.getByText("Unclassified")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("");
     expect(screen.queryByRole("heading", { name: "Summary" })).not.toBeInTheDocument();
   });
@@ -152,18 +167,6 @@ describe("TicketDetailPage", () => {
 });
 
 describe("TicketDetailPage assignee", () => {
-  // Serves the ticket as it is on the "server", which a successful PATCH changes, so refetches see the new assignee.
-  function mockTicketApi(patchResult?: () => Promise<unknown>) {
-    let current = ticket;
-    mockGet(() => ok({ ticket: current }));
-    return spyOn(api, "patch").mockImplementation(((_path: string, body: { assignedToId: string | null }) => {
-      if (patchResult) return patchResult();
-      const assignedTo = assignees.find((user) => user.id === body.assignedToId) ?? null;
-      current = { ...current, assignedTo };
-      return ok({ ticket: current });
-    }) as typeof api.patch);
-  }
-
   const assigneeSelect = () => screen.findByRole("combobox", { name: "Assignee" });
 
   test("offers Unassigned and the active users", async () => {
@@ -235,5 +238,88 @@ describe("TicketDetailPage assignee", () => {
     await within(select).findByRole("option", { name: "Beth Admin" });
     expect(select).toHaveValue("gone");
     expect(within(select).getByRole("option", { name: "Gina Gone" })).toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailPage status and category", () => {
+  const statusSelect = () => screen.findByRole("combobox", { name: "Status" });
+  const categorySelect = () => screen.findByRole("combobox", { name: "Category" });
+
+  test("offers every status and category", async () => {
+    mockTicketApi();
+    renderPage();
+
+    const options = (select: HTMLElement) => within(select).getAllByRole("option").map((option) => option.textContent);
+    expect(options(await statusSelect())).toEqual(["Open", "Resolved", "Closed"]);
+    expect(options(await categorySelect())).toEqual(["General question", "Technical question", "Refund request"]);
+  });
+
+  test("changes the status", async () => {
+    const patch = mockTicketApi();
+    const invalidate = spyOn(queryClient, "invalidateQueries");
+    renderPage();
+    const select = await statusSelect();
+
+    fireEvent.change(select, { target: { value: TicketStatus.RESOLVED } });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { status: TicketStatus.RESOLVED }));
+    expect(await within(select).findByRole("option", { name: "Resolved", selected: true })).toBeInTheDocument();
+    expect(select).toBeEnabled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["tickets"] });
+  });
+
+  test("changes the category", async () => {
+    const patch = mockTicketApi();
+    renderPage();
+    const select = await categorySelect();
+
+    fireEvent.change(select, { target: { value: TicketCategory.TECHNICAL_QUESTION } });
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/tickets/t1", { category: TicketCategory.TECHNICAL_QUESTION }),
+    );
+    expect(await within(select).findByRole("option", { name: "Technical question", selected: true })).toBeInTheDocument();
+  });
+
+  test("classifies an unclassified ticket, which can't be set back to Unclassified", async () => {
+    const patch = mockTicketApi(undefined, { ...ticket, category: null });
+    renderPage();
+    const select = await categorySelect();
+    expect(within(select).getByRole("option", { name: "Unclassified" })).toBeDisabled();
+
+    fireEvent.change(select, { target: { value: TicketCategory.GENERAL_QUESTION } });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { category: TicketCategory.GENERAL_QUESTION }));
+    await within(select).findByRole("option", { name: "General question", selected: true });
+    expect(within(select).queryByRole("option", { name: "Unclassified" })).not.toBeInTheDocument();
+  });
+
+  test("shows the chosen status and disables the select while saving", async () => {
+    mockTicketApi(pending);
+    renderPage();
+    const select = await statusSelect();
+
+    fireEvent.change(select, { target: { value: TicketStatus.CLOSED } });
+    await waitFor(() => expect(select).toBeDisabled());
+    expect(select).toHaveValue(TicketStatus.CLOSED);
+    // Only the field being saved is disabled.
+    expect(await categorySelect()).toBeEnabled();
+  });
+
+  test("shows the API's error and keeps the status when saving fails", async () => {
+    mockTicketApi(() => httpError(400, { error: "Invalid status" }));
+    renderPage();
+    const select = await statusSelect();
+
+    fireEvent.change(select, { target: { value: TicketStatus.CLOSED } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't change the status: Invalid status");
+    expect(select).toHaveValue(TicketStatus.OPEN);
+  });
+
+  test("shows the API's error and keeps the category when saving fails", async () => {
+    mockTicketApi(() => httpError(400, { error: "Invalid category" }));
+    renderPage();
+    const select = await categorySelect();
+
+    fireEvent.change(select, { target: { value: TicketCategory.GENERAL_QUESTION } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't change the category: Invalid category");
+    expect(select).toHaveValue(TicketCategory.REFUND_REQUEST);
   });
 });
