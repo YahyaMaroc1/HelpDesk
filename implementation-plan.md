@@ -56,16 +56,14 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 
 ## Phase 5 – Tickets Core
 
-- [ ] 5.1 `GET /api/tickets`: list tickets with filters (status, category, assigned agent, search text), sorting (created, updated) and pagination
-  - Done: sorting by any list column (`sortBy`, `sortOrder`) and filters (`status`, `category` incl. `unclassified`, `assignee` incl. `unassigned`, search `q`). Still to do: pagination.
+- [x] 5.1 `GET /api/tickets`: list tickets with filters (status, category, assigned agent, search text), sorting (created, updated) and pagination
 - [ ] 5.2 `GET /api/tickets/:id`: ticket with its messages
 - [ ] 5.3 `PATCH /api/tickets/:id`: change status, category or assigned agent
 - [x] 5.4 Script to create sample tickets for development
 - [ ] 5.5 Client: app layout (sidebar navigation, header with current user)
 - [x] 5.6 Client: ticket list page with a table of tickets
 - [x] 5.7 Client: filter controls (status, category, agent, search)
-- [ ] 5.8 Client: sortable columns and pagination
-  - Done: sortable columns (TanStack Table, sorted on the server). Still to do: pagination.
+- [x] 5.8 Client: sortable columns and pagination
 - [ ] 5.9 Keep filters and sorting in the URL so views can be shared and survive reloads
 - [ ] 5.10 Client: ticket detail page showing the message thread
 - [ ] 5.11 Client: controls on the detail page to change status, category and assignee

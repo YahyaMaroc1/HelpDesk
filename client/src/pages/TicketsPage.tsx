@@ -2,18 +2,29 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   createColumnHelper,
   FlexRender,
+  rowPaginationFeature,
   rowSortingFeature,
   tableFeatures,
   useTable,
   type Column,
+  type PaginationState,
   type SortingState,
+  type Updater,
 } from "@tanstack/react-table";
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, CircleAlertIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpDownIcon,
+  ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CircleAlertIcon,
+} from "lucide-react";
 import { useState } from "react";
 import { hasTicketFilters, noTicketFilters, TicketFilters, type TicketFilterValues } from "@/components/TicketFilters.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
@@ -47,7 +58,7 @@ export const formatTicketDate = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 // Module level so the table doesn't rebuild them on every render.
-const features = tableFeatures({ rowSortingFeature });
+const features = tableFeatures({ rowSortingFeature, rowPaginationFeature });
 const column = createColumnHelper<typeof features, TicketListItem>();
 const columns = column.columns([
   column.accessor("subject", {
@@ -98,11 +109,25 @@ const columns = column.columns([
 
 const defaultSorting: SortingState = [{ id: "createdAt", desc: true }];
 const searchDebounceMs = 300;
+// The server allows page sizes up to 100 (listTicketsQuerySchema in server/src/routes/tickets.ts).
+export const ticketPageSizes = [10, 25, 50, 100];
+const defaultPagination: PaginationState = { pageIndex: 0, pageSize: 25 };
 const noTickets: TicketListItem[] = [];
 
 export function TicketsPage() {
   // One column at a time, always sorted (no unsorted state). The server does the sorting.
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
+  // The server pages the results too. A new sort or filter starts again from the first page.
+  const [pagination, setPagination] = useState<PaginationState>(defaultPagination);
+  const toFirstPage = () => setPagination((current) => ({ ...current, pageIndex: 0 }));
+  const changeSorting = (updater: Updater<SortingState>) => {
+    setSorting(updater);
+    toFirstPage();
+  };
+  const changeFilters = (next: TicketFilterValues) => {
+    setFilters(next);
+    toFirstPage();
+  };
   const sort = sorting[0] ?? defaultSorting[0]!;
   const sortBy = sort.id as TicketSortColumn;
   const sortOrder: TicketSortOrder = sort.desc ? "desc" : "asc";
@@ -112,18 +137,24 @@ export function TicketsPage() {
   const q = useDebouncedValue(filters.q.trim(), searchDebounceMs);
   // Only the filters that are set, so the request and the query key leave out the others.
   const filterParams = Object.fromEntries(Object.entries({ ...filters, q }).filter(([, value]) => value !== ""));
-  const params = { ...filterParams, sortBy, sortOrder };
+  const params = {
+    ...filterParams,
+    sortBy,
+    sortOrder,
+    page: pagination.pageIndex + 1,
+    pageSize: pagination.pageSize,
+  };
 
   const {
-    data: tickets,
+    data,
     error,
     isPending,
     isPlaceholderData,
   } = useQuery({
     queryKey: ["tickets", params],
     queryFn: async ({ signal }) =>
-      (await api.get<{ tickets: TicketListItem[] }>("/tickets", { params, signal })).data.tickets,
-    // Keep showing the current rows while another sort or filter loads, instead of the skeleton.
+      (await api.get<{ tickets: TicketListItem[]; total: number }>("/tickets", { params, signal })).data,
+    // Keep showing the current rows while another sort, filter or page loads, instead of the skeleton.
     placeholderData: keepPreviousData,
   });
 
@@ -134,14 +165,20 @@ export function TicketsPage() {
       (await api.get<{ assignees: { id: string; name: string }[] }>("/assignees", { signal })).data.assignees,
   });
 
+  const tickets = data?.tickets;
+
   const table = useTable({
     features,
     columns,
     data: tickets ?? noTickets,
     getRowId: (ticket) => ticket.id,
-    state: { sorting },
-    onSortingChange: setSorting,
+    state: { sorting, pagination },
+    onSortingChange: changeSorting,
+    onPaginationChange: setPagination,
+    rowCount: data?.total ?? 0,
     manualSorting: true,
+    manualPagination: true,
+    autoResetPageIndex: false,
     enableMultiSort: false,
     enableSortingRemoval: false,
     sortDescFirst: false,
@@ -154,7 +191,7 @@ export function TicketsPage() {
         <p className="text-sm text-muted-foreground">Support requests received by email.</p>
       </div>
 
-      <TicketFilters value={filters} onChange={setFilters} assignees={assignees ?? []} />
+      <TicketFilters value={filters} onChange={changeFilters} assignees={assignees ?? []} />
 
       {error && (
         <Alert variant="destructive">
@@ -184,7 +221,11 @@ export function TicketsPage() {
             {tickets.length === 0 && (
               <TableRow>
                 <TableCell colSpan={columns.length} className="text-center text-muted-foreground">
-                  {hasTicketFilters(filters) ? "No tickets match these filters." : "No tickets yet."}
+                  {data.total > 0
+                    ? "No tickets on this page."
+                    : hasTicketFilters(filters)
+                      ? "No tickets match these filters."
+                      : "No tickets yet."}
                 </TableCell>
               </TableRow>
             )}
@@ -200,7 +241,60 @@ export function TicketsPage() {
           </TableBody>
         </Table>
       )}
+
+      {data && data.total > 0 && <TicketsPagination table={table} />}
     </div>
+  );
+}
+
+// "1–25 of 102", the page size, and previous/next page buttons.
+function TicketsPagination({ table }: { table: ReturnType<typeof useTable<typeof features, TicketListItem>> }) {
+  const { pageIndex, pageSize } = table.state.pagination;
+  const total = table.getRowCount();
+  const first = Math.min(pageIndex * pageSize + 1, total);
+  const last = Math.min((pageIndex + 1) * pageSize, total);
+
+  return (
+    <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-4 text-sm">
+      <p className="text-muted-foreground" aria-live="polite">
+        {first}–{last} of {total} tickets
+      </p>
+      <div className="flex flex-wrap items-center gap-4">
+        <label className="flex items-center gap-2">
+          <span className="text-muted-foreground">Rows per page</span>
+          <NativeSelect size="sm" value={pageSize} onChange={(e) => table.setPageSize(Number(e.target.value))}>
+            {ticketPageSizes.map((size) => (
+              <NativeSelectOption key={size} value={size}>
+                {size}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </label>
+        <span>
+          Page {pageIndex + 1} of {table.getPageCount()}
+        </span>
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Previous page"
+            disabled={!table.getCanPreviousPage()}
+            onClick={() => table.previousPage()}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Next page"
+            disabled={!table.getCanNextPage()}
+            onClick={() => table.nextPage()}
+          >
+            <ChevronRightIcon />
+          </Button>
+        </div>
+      </div>
+    </nav>
   );
 }
 

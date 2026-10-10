@@ -20,8 +20,11 @@ const ticketListFields = {
   assignedTo: { select: { id: true, name: true } },
 } as const;
 
-// Keep in sync with client/src/pages/TicketsPage.tsx: the sortable columns are its table's column ids, and the
-// filters are its filter controls. Empty filter values mean "any".
+// Keep in sync with client/src/pages/TicketsPage.tsx: the sortable columns are its table's column ids, the filters
+// are its filter controls, and the page sizes are its page size options. Empty filter values mean "any".
+const maxTicketPageSize = 100;
+const pageMessage = "Page must be a whole number of at least 1";
+const pageSizeMessage = `Page size must be a whole number from 1 to ${maxTicketPageSize}`;
 const listTicketsQuerySchema = z.object({
   status: z.enum(TicketStatus, { error: "Invalid status" }).optional(),
   // "unclassified": tickets without a category.
@@ -34,6 +37,14 @@ const listTicketsQuerySchema = z.object({
     .enum(["subject", "senderEmail", "status", "category", "assignee", "createdAt"], { error: "Invalid sort column" })
     .default("createdAt"),
   sortOrder: z.enum(["asc", "desc"], { error: "Invalid sort order" }).default("desc"),
+  // 1-based. A page past the end is empty, with the real `total`.
+  page: z.coerce.number({ error: pageMessage }).int(pageMessage).min(1, pageMessage).default(1),
+  pageSize: z.coerce
+    .number({ error: pageSizeMessage })
+    .int(pageSizeMessage)
+    .min(1, pageSizeMessage)
+    .max(maxTicketPageSize, pageSizeMessage)
+    .default(25),
 });
 type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;
 type SortBy = ListTicketsQuery["sortBy"];
@@ -67,21 +78,52 @@ function sortColumn(sortBy: SortBy, order: Prisma.SortOrder): Prisma.TicketOrder
 
 // Newest first by default. `?sortBy=<column>&sortOrder=asc|desc` sorts by another column; the id breaks ties so
 // equal values keep a stable order between requests. `status`, `category`, `assignee` and `q` filter the list.
+// `page` and `pageSize` pick a page; `total` is the number of tickets matching the filters.
 ticketsRouter.get("/", async (req, res) => {
   const query = validate(listTicketsQuerySchema, req.query, res);
   if (!query) return;
 
-  const tickets = await prisma.ticket.findMany({
-    select: ticketListFields,
-    where: ticketFilters(query),
-    orderBy: [sortColumn(query.sortBy, query.sortOrder), { id: query.sortOrder }],
-  });
-
-  // Prisma has no `nulls` option when ordering by a relation field, and Postgres puts NULLs first when sorting
-  // descending, so move unassigned tickets to the end here. Pagination will need this done in SQL instead.
-  if (query.sortBy === "assignee") {
-    res.json({ tickets: [...tickets.filter((t) => t.assignedTo), ...tickets.filter((t) => !t.assignedTo)] });
-    return;
-  }
-  res.json({ tickets });
+  const where = ticketFilters(query);
+  const skip = (query.page - 1) * query.pageSize;
+  const [tickets, total] = await Promise.all([
+    query.sortBy === "assignee"
+      ? ticketsByAssignee(where, query.sortOrder, skip, query.pageSize)
+      : prisma.ticket.findMany({
+          select: ticketListFields,
+          where,
+          orderBy: [sortColumn(query.sortBy, query.sortOrder), { id: query.sortOrder }],
+          skip,
+          take: query.pageSize,
+        }),
+    prisma.ticket.count({ where }),
+  ]);
+  res.json({ tickets, total });
 });
+
+// One page of tickets sorted by assignee name, with unassigned tickets last in both directions. Prisma has no
+// `nulls` option when ordering by a relation field (and Postgres puts NULLs first when sorting descending), so this
+// pages through the assigned tickets, then continues into the unassigned ones.
+async function ticketsByAssignee(where: Prisma.TicketWhereInput, order: Prisma.SortOrder, skip: number, take: number) {
+  const assignedWhere = { AND: [where, { assignedToId: { not: null } }] };
+  const assignedCount = await prisma.ticket.count({ where: assignedWhere });
+  const assigned =
+    skip < assignedCount
+      ? await prisma.ticket.findMany({
+          select: ticketListFields,
+          where: assignedWhere,
+          orderBy: [{ assignedTo: { name: order } }, { id: order }],
+          skip,
+          take,
+        })
+      : [];
+  if (assigned.length === take) return assigned;
+
+  const unassigned = await prisma.ticket.findMany({
+    select: ticketListFields,
+    where: { AND: [where, { assignedToId: null }] },
+    orderBy: { id: order },
+    skip: Math.max(0, skip - assignedCount),
+    take: take - assigned.length,
+  });
+  return [...assigned, ...unassigned];
+}
