@@ -154,6 +154,7 @@ Run from the project root:
   `pages/UsersPage.tsx` is the reference, including its loading, error and empty states.
 - **Writes:** `useMutation` with `api.post` / `api.patch` / `api.delete`, then `queryClient.invalidateQueries({ queryKey: [...] })` (from `useQueryClient()`) for every query the change affects.
 - **Query keys** start with the resource name: `["users"]`, `["users", id]`, `["tickets", filters]`.
+- **Data tables** use TanStack Table v9 (`useTable` with `tableFeatures`; the v8 API differs) in manual mode: the sort lives in React state, goes into the query key and the request params, and the server orders the rows (`manualSorting: true`, no client row models). Use `placeholderData: keepPreviousData` so the current rows stay while a new sort loads. `pages/TicketsPage.tsx` is the reference.
 - **Errors:** show them with `apiErrorMessage(error)` from `@/lib/api.ts` (the API's `{ error }` message, else `HTTP <status>`, else the network error).
 - **One of each:** use the existing `api` instance and the `queryClient` from `@/lib/query-client.ts` (provided in `main.tsx`). Don't create another axios instance or `QueryClient`. Its retry policy (never retry 4xx; retry 5xx/network errors once) keeps errors fast; don't override it per query without a reason.
 - **Sign-out** calls `queryClient.clear()` (`Layout.tsx`) so cached data never leaks to the next user on the same tab. Keep this if sign-out moves.

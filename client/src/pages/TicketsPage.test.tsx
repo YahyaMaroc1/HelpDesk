@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { AxiosError, AxiosHeaders, type AxiosResponse } from "axios";
 import { api } from "@/lib/api.ts";
 import { queryClient } from "@/lib/query-client.ts";
@@ -31,9 +31,19 @@ const tickets: TicketListItem[] = [
   },
 ];
 
-// Stubs GET /api/tickets on the shared axios instance.
-function mockGetTickets(result: Promise<unknown>) {
-  return spyOn(api, "get").mockImplementation((() => result) as typeof api.get);
+// Stubs GET /api/tickets on the shared axios instance. Pass several results to answer successive requests (the last
+// one repeats).
+function mockGetTickets(...results: Promise<unknown>[]) {
+  let call = 0;
+  return spyOn(api, "get").mockImplementation((() => results[Math.min(call++, results.length - 1)]) as typeof api.get);
+}
+
+// The subject in each body row, top to bottom.
+function rowSubjects(table: HTMLElement) {
+  return within(table)
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => within(row).getAllByRole("cell")[0]?.textContent);
 }
 
 function ok(data: unknown) {
@@ -54,14 +64,58 @@ afterEach(() => {
 });
 
 describe("TicketsPage", () => {
-  test("requests the tickets from GET /tickets", async () => {
+  test("requests the tickets from GET /tickets, newest first", async () => {
     const get = mockGetTickets(ok({ tickets }));
     renderWithQuery(<TicketsPage />);
 
     await screen.findByRole("table");
     expect(get).toHaveBeenCalledTimes(1);
     expect(get.mock.calls[0]?.[0]).toBe("/tickets");
-    expect(get.mock.calls[0]?.[1]).toEqual({ signal: expect.any(AbortSignal) });
+    expect(get.mock.calls[0]?.[1]).toEqual({
+      params: { sortBy: "createdAt", sortOrder: "desc" },
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  test("marks the Created column as sorted descending and the others as sortable", async () => {
+    mockGetTickets(ok({ tickets }));
+    renderWithQuery(<TicketsPage />);
+
+    const table = await screen.findByRole("table");
+    for (const name of ["Subject", "From", "Status", "Category", "Assignee", "Created"]) {
+      expect(within(table).getByRole("button", { name })).toBeInTheDocument();
+    }
+    expect(within(table).getByRole("columnheader", { name: "Created" })).toHaveAttribute("aria-sort", "descending");
+    expect(within(table).getByRole("columnheader", { name: "Subject" })).not.toHaveAttribute("aria-sort");
+  });
+
+  test("sorts on the server when a column header is clicked, ascending then descending", async () => {
+    const reversed = [...tickets].reverse();
+    const get = mockGetTickets(ok({ tickets }), ok({ tickets: reversed }), new Promise(() => {}));
+    renderWithQuery(<TicketsPage />);
+
+    const table = await screen.findByRole("table");
+    fireEvent.click(within(table).getByRole("button", { name: "Subject" }));
+
+    await waitFor(() => expect(rowSubjects(table)).toEqual(["Can't log in", "Refund for my course"]));
+    expect(get.mock.calls[1]?.[1]).toEqual({
+      params: { sortBy: "subject", sortOrder: "asc" },
+      signal: expect.any(AbortSignal),
+    });
+    expect(within(table).getByRole("columnheader", { name: "Subject" })).toHaveAttribute("aria-sort", "ascending");
+    expect(within(table).getByRole("columnheader", { name: "Created" })).not.toHaveAttribute("aria-sort");
+
+    fireEvent.click(within(table).getByRole("button", { name: "Subject" }));
+
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(get.mock.calls[2]?.[1]).toEqual({
+      params: { sortBy: "subject", sortOrder: "desc" },
+      signal: expect.any(AbortSignal),
+    });
+    expect(within(table).getByRole("columnheader", { name: "Subject" })).toHaveAttribute("aria-sort", "descending");
+    // While the new order loads, the current rows stay instead of the loading skeleton.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(rowSubjects(table)).toEqual(["Can't log in", "Refund for my course"]);
   });
 
   test("shows the heading and a loading status while the request is pending", () => {

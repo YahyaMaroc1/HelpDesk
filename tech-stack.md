@@ -8,6 +8,7 @@
 * React Router
 * React Hook Form + Zod for forms and validation
 * Axios for API requests, with TanStack Query for fetching and caching server data
+* TanStack Table (headless) for data tables, with sorting done on the server
 
 ## Backend
 
