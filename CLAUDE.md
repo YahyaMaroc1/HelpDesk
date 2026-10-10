@@ -139,6 +139,7 @@ Run from the project root:
 - It's not session-authenticated: every request needs the `X-Webhook-Secret` header matching `INBOUND_EMAIL_SECRET` (401 otherwise; 503 if the variable is unset). The router is mounted before the app-wide `express.json()` so it checks the secret first and accepts bodies up to 1 MB.
 - New email → 201 `{ ticketId, result: "created" }` (an `OPEN` ticket with its first `INBOUND` message). A reply whose `In-Reply-To`/`References` matches a stored `Message.emailMessageId` → 200 `"appended"` to that ticket, reopening it if `RESOLVED`. A repeated Message-ID → 200 `"duplicate"` (unique index, so concurrent redeliveries are safe too). Message-IDs are stored without angle brackets.
 - `bun run email:sample` (from `server/`, needs the API running) posts a sample email; `--reply-to <Message-ID>` sends a reply to it. `API_URL` targets another server.
+- `bun run tickets:sample` (from `server/`) inserts 100 varied sample tickets into the dev database through Prisma (statuses, categories incl. unclassified, assignees from the active users incl. unassigned, dates over the last 90 days), for trying out sorting and filtering. It refuses if they exist; `--reset` replaces them. They are marked by `@sample.helpdesk.invalid` Message-IDs, so `--reset` leaves other tickets alone.
 
 ## Data fetching (client)
 

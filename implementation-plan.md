@@ -60,7 +60,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
   - Done: sorting by any list column (`sortBy`, `sortOrder`). Still to do: filters and pagination.
 - [ ] 5.2 `GET /api/tickets/:id`: ticket with its messages
 - [ ] 5.3 `PATCH /api/tickets/:id`: change status, category or assigned agent
-- [ ] 5.4 Script to create sample tickets for development
+- [x] 5.4 Script to create sample tickets for development
 - [ ] 5.5 Client: app layout (sidebar navigation, header with current user)
 - [x] 5.6 Client: ticket list page with a table of tickets
 - [ ] 5.7 Client: filter controls (status, category, agent, search)

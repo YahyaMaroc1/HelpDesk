@@ -12,7 +12,8 @@
     "db:deploy": "bun --bun prisma migrate deploy",
     "db:seed": "bun --bun prisma db seed",
     "db:studio": "bun --bun prisma studio",
-    "email:sample": "bun scripts/send-sample-email.ts"
+    "email:sample": "bun scripts/send-sample-email.ts",
+    "tickets:sample": "bun scripts/create-sample-tickets.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
