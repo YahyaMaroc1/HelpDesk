@@ -61,7 +61,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [ ] 5.3 `PATCH /api/tickets/:id`: change status, category or assigned agent
 - [ ] 5.4 Script to create sample tickets for development
 - [ ] 5.5 Client: app layout (sidebar navigation, header with current user)
-- [ ] 5.6 Client: ticket list page with a table of tickets
+- [x] 5.6 Client: ticket list page with a table of tickets
 - [ ] 5.7 Client: filter controls (status, category, agent, search)
 - [ ] 5.8 Client: sortable columns and pagination
 - [ ] 5.9 Keep filters and sorting in the URL so views can be shared and survive reloads

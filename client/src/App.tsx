@@ -4,6 +4,7 @@ import { RequireAdmin } from "./components/RequireAdmin.tsx";
 import { RequireAuth } from "./components/RequireAuth.tsx";
 import { HomePage } from "./pages/HomePage.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
+import { TicketsPage } from "./pages/TicketsPage.tsx";
 import { UsersPage } from "./pages/UsersPage.tsx";
 
 export function App() {
@@ -13,6 +14,7 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<HomePage />} />
+          <Route path="tickets" element={<TicketsPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="users" element={<UsersPage />} />
           </Route>

@@ -7,6 +7,7 @@ import { requireAdmin } from "./middleware/requireAdmin.ts";
 import { requireAuth } from "./middleware/requireAuth.ts";
 import { healthRouter } from "./routes/health.ts";
 import { meRouter } from "./routes/me.ts";
+import { ticketsRouter } from "./routes/tickets.ts";
 import { usersRouter } from "./routes/users.ts";
 import { webhooksRouter } from "./routes/webhooks.ts";
 
@@ -52,6 +53,7 @@ app.use(express.json({ limit: "100kb" }));
 
 app.use("/api/health", healthRouter);
 app.use("/api/me", meRouter);
+app.use("/api/tickets", requireAuth, ticketsRouter);
 app.use("/api/users", requireAuth, requireAdmin, usersRouter);
 
 app.use("/api", (_req, res) => {
