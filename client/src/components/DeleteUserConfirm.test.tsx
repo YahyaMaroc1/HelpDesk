@@ -46,12 +46,12 @@ describe("DeleteUserConfirm", () => {
   test("names the user and what deleting them does", async () => {
     const { dialog } = await renderConfirm();
 
-    expect(dialog).toHaveAccessibleDescription("Alan Agent (alan@example.com) will be signed out and can no longer sign in.");
+    expect(dialog).toHaveAccessibleDescription("Alan Agent (alan@example.com) will be signed out and can no longer sign in. Their tickets will be unassigned.");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Delete" })).toBeEnabled();
   });
 
-  test("deletes the user, refreshes the users list and reports success", async () => {
+  test("deletes the user, refreshes the users, tickets and assignees and reports success", async () => {
     const del = mockDelete(() => Promise.resolve({ status: 204, data: "" }));
     const invalidate = spyOn(queryClient, "invalidateQueries");
     const { dialog, onDeleted } = await renderConfirm();
@@ -62,6 +62,8 @@ describe("DeleteUserConfirm", () => {
     expect(del).toHaveBeenCalledTimes(1);
     expect(del.mock.calls[0]).toEqual(["/users/user-2"]);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["users"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["tickets"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["assignees"] });
   });
 
   test("disables the delete button while the request is pending", async () => {

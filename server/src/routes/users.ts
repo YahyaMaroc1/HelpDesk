@@ -119,7 +119,8 @@ usersRouter.patch("/:id", async (req, res) => {
 });
 
 // Soft-deletes a user: they're hidden from the list, signed out everywhere, and can no longer sign in (see the
-// session hook in lib/auth.ts). The row stays, so their email remains taken. Admins can't be deleted.
+// session hook in lib/auth.ts). Their tickets are unassigned. The row stays, so their email remains taken.
+// Admins can't be deleted.
 usersRouter.delete("/:id", async (req, res) => {
   const params = validate(userParamsSchema, req.params, res, 404);
   if (!params) return;
@@ -138,6 +139,7 @@ usersRouter.delete("/:id", async (req, res) => {
   await prisma.$transaction([
     prisma.user.update({ where: { id }, data: { deletedAt: new Date() } }),
     prisma.session.deleteMany({ where: { userId: id } }),
+    prisma.ticket.updateMany({ where: { assignedToId: id }, data: { assignedToId: null } }),
   ]);
   res.status(204).end();
 });

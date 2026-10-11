@@ -26,7 +26,12 @@ export function DeleteUserConfirm({ user, onDeleted }: DeleteUserConfirmProps) {
       await api.delete(`/users/${user.id}`);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Their tickets are unassigned and they leave the assignee pickers.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["users"] }),
+        queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+        queryClient.invalidateQueries({ queryKey: ["assignees"] }),
+      ]);
       onDeleted();
     },
   });
@@ -36,7 +41,7 @@ export function DeleteUserConfirm({ user, onDeleted }: DeleteUserConfirmProps) {
       <AlertDialogHeader>
         <AlertDialogTitle>Delete user?</AlertDialogTitle>
         <AlertDialogDescription>
-          {user.name} ({user.email}) will be signed out and can no longer sign in.
+          {user.name} ({user.email}) will be signed out and can no longer sign in. Their tickets will be unassigned.
         </AlertDialogDescription>
       </AlertDialogHeader>
       {deleteUser.error && (

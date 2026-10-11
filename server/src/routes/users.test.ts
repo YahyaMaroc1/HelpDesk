@@ -8,6 +8,7 @@ import { Role } from "../generated/prisma/enums.ts";
 const prisma = {
   user: { findMany: mock(), findFirst: mock(), findUniqueOrThrow: mock(), update: mock() },
   session: { deleteMany: mock() },
+  ticket: { updateMany: mock() },
   $transaction: mock(),
 };
 const ctx = {
@@ -60,6 +61,7 @@ beforeEach(() => {
   prisma.user.findUniqueOrThrow.mockReset().mockResolvedValue(alan);
   prisma.user.update.mockReset().mockResolvedValue({});
   prisma.session.deleteMany.mockReset().mockResolvedValue({ count: 0 });
+  prisma.ticket.updateMany.mockReset().mockResolvedValue({ count: 0 });
   prisma.$transaction.mockReset().mockResolvedValue([]);
   ctx.internalAdapter.createUser.mockReset().mockResolvedValue({ id: alan.id });
   ctx.internalAdapter.linkAccount.mockReset().mockResolvedValue({});
@@ -88,13 +90,14 @@ async function call(method: string, path: string, body?: unknown) {
   return { status: res.status, body: (text ? JSON.parse(text) : undefined) as ResponseBody | undefined };
 }
 
-// Whether the request wrote anything: users, accounts or sessions.
+// Whether the request wrote anything: users, accounts, sessions or tickets.
 function expectNothingWritten() {
   expect(ctx.internalAdapter.createUser).not.toHaveBeenCalled();
   expect(ctx.internalAdapter.linkAccount).not.toHaveBeenCalled();
   expect(ctx.internalAdapter.updateUser).not.toHaveBeenCalled();
   expect(ctx.internalAdapter.updatePassword).not.toHaveBeenCalled();
   expect(prisma.session.deleteMany).not.toHaveBeenCalled();
+  expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
   expect(prisma.$transaction).not.toHaveBeenCalled();
 }
 
@@ -250,13 +253,14 @@ describe("PATCH /api/users/:id", () => {
 });
 
 describe("DELETE /api/users/:id", () => {
-  test("soft-deletes an agent and deletes their sessions in one transaction", async () => {
+  test("soft-deletes an agent, deletes their sessions and unassigns their tickets in one transaction", async () => {
     const res = await call("DELETE", "/u2");
 
     expect(res).toEqual({ status: 204, body: undefined });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: "u2" }, data: { deletedAt: expect.any(Date) } });
     expect(prisma.session.deleteMany).toHaveBeenCalledWith({ where: { userId: "u2" } });
+    expect(prisma.ticket.updateMany).toHaveBeenCalledWith({ where: { assignedToId: "u2" }, data: { assignedToId: null } });
   });
 
   test("answers 404 for a user that doesn't exist or was already deleted", async () => {

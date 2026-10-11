@@ -258,7 +258,7 @@ describe("UsersPage", () => {
 
       const dialog = await openDelete();
 
-      expect(dialog).toHaveAccessibleDescription("Alan Agent (alan@example.com) will be signed out and can no longer sign in.");
+      expect(dialog).toHaveAccessibleDescription("Alan Agent (alan@example.com) will be signed out and can no longer sign in. Their tickets will be unassigned.");
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
