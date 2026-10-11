@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
+import { isPolishConfigured, polishReply } from "../lib/ai.ts";
 import type { Session } from "../lib/auth.ts";
 import { prisma } from "../lib/prisma.ts";
 import { validate } from "../lib/validate.ts";
@@ -211,6 +212,9 @@ const replySchema = z.object({
     .max(maxReplyLength, `Reply must be at most ${maxReplyLength.toLocaleString("en-US")} characters`),
 });
 
+// What POST /:id/replies/polish passes to polishReply (lib/ai.ts): the validated draft and the ticket's context.
+export type PolishInput = { draft: string; subject: string; customerName: string | null; agentName: string };
+
 // Adds the signed-in user's reply to the thread as an outbound message and returns the updated ticket, as
 // GET /api/tickets/:id does. Not emailed yet: sending waits for the email provider (implementation plan 7.1).
 ticketsRouter.post("/:id/replies", async (req, res) => {
@@ -241,4 +245,40 @@ ticketsRouter.post("/:id/replies", async (req, res) => {
     select: ticketDetailFields,
   });
   res.status(201).json({ ticket });
+});
+
+// Rewrites the agent's draft reply with AI and returns it as `{ body }` without saving anything; the agent reviews it
+// and sends it with POST /:id/replies. Takes the same body as that route.
+ticketsRouter.post("/:id/replies/polish", async (req, res) => {
+  const params = validate(ticketParamsSchema, req.params, res, 404);
+  if (!params) return;
+  const body = validate(replySchema, req.body, res);
+  if (!body) return;
+  const user: Session["user"] = res.locals.user;
+
+  if (!isPolishConfigured()) {
+    res.status(503).json({ error: "Reply polishing isn't set up" });
+    return;
+  }
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: params.id },
+    select: { subject: true, senderName: true },
+  });
+  if (!ticket) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const polished = await polishReply({
+      draft: body.body,
+      subject: ticket.subject,
+      customerName: ticket.senderName,
+      agentName: user.name,
+    });
+    res.json({ body: polished });
+  } catch (err) {
+    console.error("Polishing a reply failed:", err);
+    res.status(502).json({ error: "The AI service didn't respond. Try again." });
+  }
 });

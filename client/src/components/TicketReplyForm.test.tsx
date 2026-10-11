@@ -61,11 +61,15 @@ afterEach(() => {
 });
 
 describe("TicketReplyForm", () => {
-  test("shows an empty reply box and a send button", () => {
+  test("shows an empty reply box and disables sending until a reply is written", () => {
     renderWithQuery(<TicketReplyForm ticketId="t1" />);
 
     expect(replyBox()).toHaveValue("");
     expect(replyBox()).not.toHaveAccessibleDescription();
+    expect(sendButton()).toBeDisabled();
+
+    fireEvent.input(replyBox(), { target: { value: "Hello" } });
+
     expect(sendButton()).toBeEnabled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -91,21 +95,21 @@ describe("TicketReplyForm", () => {
     await waitFor(() => expect(replyBox()).toHaveValue(""));
     expect(queryClient.getQueryData<TicketDetail>(["tickets", "t1"])).toEqual(repliedTicket);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["tickets"] });
-    expect(sendButton()).toBeEnabled();
+    expect(sendButton()).toBeDisabled();
   });
 
   test.each([
     ["an empty reply", ""],
     ["a reply of only whitespace", "   \n\t  "],
-  ])("doesn't send %s", async (_, text) => {
+  ])("disables sending %s without showing an error", (_, text) => {
     const post = mockPost();
     renderWithQuery(<TicketReplyForm ticketId="t1" />);
 
     send(text);
 
-    expect(await screen.findByText("Write a reply")).toBeInTheDocument();
-    expect(replyBox()).toHaveAttribute("aria-invalid", "true");
-    expect(replyBox()).toHaveAccessibleDescription("Write a reply");
+    expect(sendButton()).toBeDisabled();
+    expect(screen.queryByText("Write a reply")).not.toBeInTheDocument();
+    expect(replyBox()).not.toHaveAttribute("aria-invalid");
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -128,11 +132,11 @@ describe("TicketReplyForm", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
   });
 
-  test("clears the validation error once a reply is written", async () => {
+  test("clears the validation error once the reply is short enough", async () => {
     mockPost();
     renderWithQuery(<TicketReplyForm ticketId="t1" />);
-    send("");
-    const error = await screen.findByText("Write a reply");
+    send("x".repeat(20_001));
+    const error = await screen.findByText("Reply must be at most 20,000 characters");
 
     fireEvent.input(replyBox(), { target: { value: "Hello" } });
 
@@ -178,5 +182,79 @@ describe("TicketReplyForm", () => {
     await waitForElementToBeRemoved(alert);
     await waitFor(() => expect(replyBox()).toHaveValue(""));
     expect(post).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("TicketReplyForm polishing", () => {
+  const polishButton = () => screen.getByRole("button", { name: "Polish" });
+  const polished = "Your refund is on its way. Thank you for your patience!";
+
+  // Answers POST /tickets/:id/replies/polish with `result`, by default the polished draft.
+  function mockPolish(result: () => Promise<unknown> = () => Promise.resolve({ data: { body: polished } })) {
+    return mockPost(result);
+  }
+
+  function polish(text: string) {
+    fireEvent.input(replyBox(), { target: { value: text } });
+    fireEvent.click(polishButton());
+  }
+
+  test("sends the trimmed draft and puts the polished reply in the box without sending it", async () => {
+    const post = mockPolish();
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+
+    polish("  ur refund is on its way  ");
+
+    await waitFor(() => expect(replyBox()).toHaveValue(polished));
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith("/tickets/t1/replies/polish", { body: "ur refund is on its way" });
+    expect(polishButton()).toBeEnabled();
+  });
+
+  test("sends the polished reply when Send reply is clicked next", async () => {
+    const post = mockPolish();
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    polish("ur refund is on its way");
+    await waitFor(() => expect(replyBox()).toHaveValue(polished));
+
+    post.mockImplementation((() => Promise.resolve({ data: { ticket: repliedTicket } })) as typeof api.post);
+    fireEvent.click(sendButton());
+
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith("/tickets/t1/replies", { body: polished }));
+  });
+
+  test("disables polishing until a draft is written", () => {
+    const post = mockPolish();
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    expect(polishButton()).toBeDisabled();
+
+    polish("   ");
+
+    expect(polishButton()).toBeDisabled();
+    expect(screen.queryByText("Write a reply")).not.toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  test("makes the box read-only and disables both buttons while polishing", async () => {
+    mockPolish(pending);
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+
+    polish("Hello");
+
+    expect(await screen.findByRole("button", { name: "Polishing…" })).toBeDisabled();
+    expect(sendButton()).toBeDisabled();
+    expect(replyBox()).toHaveAttribute("readonly");
+  });
+
+  test("shows the API's error and keeps the draft when polishing fails", async () => {
+    mockPolish(() => httpError(404, { error: "Ticket not found" }));
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+
+    polish("Hello");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't polish the reply: Ticket not found");
+    expect(replyBox()).toHaveValue("Hello");
+    expect(polishButton()).toBeEnabled();
+    expect(sendButton()).toBeEnabled();
   });
 });

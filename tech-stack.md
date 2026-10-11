@@ -32,6 +32,7 @@
 ## AI
 
 * Claude API (Anthropic) for ticket classification, summaries, and suggested replies
+* Vercel AI SDK (`ai` + `@ai-sdk/google`) with Google Gemini `gemini-3.5-flash-lite` (free tier) for polishing agents' replies
 
 ## Email
 

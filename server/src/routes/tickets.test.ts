@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
@@ -10,6 +10,9 @@ const prisma = {
   user: { findFirst: mock() },
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
+// The AI calls, stubbed so the tests never reach Gemini.
+const ai = { isPolishConfigured: mock(), polishReply: mock() };
+mock.module("../lib/ai.ts", () => ai);
 const { ticketsRouter } = await import("./tickets.ts");
 
 // The router on its own, behind express.json() as in app.ts. Sessions are checked by requireAuth in app.ts, not by
@@ -43,6 +46,8 @@ beforeEach(() => {
   prisma.ticket.findUnique.mockReset().mockResolvedValue({ id: ticket.id });
   prisma.ticket.update.mockReset().mockResolvedValue(updatedTicket);
   prisma.user.findFirst.mockReset().mockResolvedValue({ id: "u1" });
+  ai.isPolishConfigured.mockReset().mockReturnValue(true);
+  ai.polishReply.mockReset().mockResolvedValue("Your refund is on its way. Thank you for your patience!");
 });
 
 type ResponseBody = { ticket?: { assignedTo: unknown }; error?: string };
@@ -265,5 +270,72 @@ describe("POST /api/tickets/:id/replies", () => {
     expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
     expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { id: "missing" } });
     expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/tickets/:id/replies/polish", () => {
+  async function polish(id: string, body: unknown) {
+    const res = await fetch(`${baseUrl}/api/tickets/${id}/replies/polish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: (await res.json()) as { body?: string; error?: string } };
+  }
+
+  test("returns the polished draft without saving anything", async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ subject: "Refund please", senderName: "Jane Doe" });
+
+    const res = await polish("t1", { body: "  ur refund is on its way  " });
+
+    expect(res).toEqual({ status: 200, body: { body: "Your refund is on its way. Thank you for your patience!" } });
+    expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({ where: { id: "t1" } });
+    expect(ai.polishReply).toHaveBeenCalledWith({
+      draft: "ur refund is on its way",
+      subject: "Refund please",
+      customerName: "Jane Doe",
+      agentName: signedInUser.name,
+    });
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [{}, "Write a reply"],
+    [{ body: "   \n  " }, "Write a reply"],
+    [{ body: "x".repeat(20_001) }, "Reply must be at most 20,000 characters"],
+  ])("rejects %j", async (body, error) => {
+    const res = await polish("t1", body);
+
+    expect(res).toEqual({ status: 400, body: { error } });
+    expect(ai.polishReply).not.toHaveBeenCalled();
+  });
+
+  test("answers 404 for a ticket that doesn't exist", async () => {
+    prisma.ticket.findUnique.mockResolvedValue(null);
+
+    const res = await polish("missing", { body: "Hello" });
+
+    expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
+    expect(ai.polishReply).not.toHaveBeenCalled();
+  });
+
+  test("answers 503 when no Gemini API key is set", async () => {
+    ai.isPolishConfigured.mockReturnValue(false);
+
+    const res = await polish("t1", { body: "Hello" });
+
+    expect(res).toEqual({ status: 503, body: { error: "Reply polishing isn't set up" } });
+    expect(ai.polishReply).not.toHaveBeenCalled();
+  });
+
+  test("answers 502 when the AI call fails", async () => {
+    ai.polishReply.mockRejectedValue(new Error("timeout"));
+    const consoleError = spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await polish("t1", { body: "Hello" });
+
+    expect(res).toEqual({ status: 502, body: { error: "The AI service didn't respond. Try again." } });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
