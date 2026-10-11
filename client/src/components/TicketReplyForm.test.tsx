@@ -257,4 +257,67 @@ describe("TicketReplyForm polishing", () => {
     expect(polishButton()).toBeEnabled();
     expect(sendButton()).toBeEnabled();
   });
+
+  test("shows the API's message when polishing isn't set up", async () => {
+    mockPolish(() => httpError(503, { error: "Reply polishing isn't set up" }));
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+
+    polish("Hello");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't polish the reply: Reply polishing isn't set up");
+  });
+
+  test("clears the polish error when polishing again succeeds", async () => {
+    const post = mockPolish(() => httpError(404, { error: "Ticket not found" }));
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    polish("Hello");
+    const alert = await screen.findByRole("alert");
+
+    post.mockImplementation((() => Promise.resolve({ data: { body: polished } })) as typeof api.post);
+    fireEvent.click(polishButton());
+
+    await waitForElementToBeRemoved(alert);
+    expect(replyBox()).toHaveValue(polished);
+  });
+
+  test("clears the polish error when the reply is sent", async () => {
+    const post = mockPolish(() => httpError(404, { error: "Ticket not found" }));
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    polish("Hello");
+    const alert = await screen.findByRole("alert");
+
+    post.mockImplementation((() => pending()) as typeof api.post);
+    fireEvent.click(sendButton());
+
+    await waitForElementToBeRemoved(alert);
+    expect(post).toHaveBeenLastCalledWith("/tickets/t1/replies", { body: "Hello" });
+  });
+
+  test("clears a send error when polishing next succeeds", async () => {
+    const post = mockPost(() => httpError(404, { error: "Ticket not found" }));
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    send("Hello");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't send the reply");
+
+    post.mockImplementation((() => Promise.resolve({ data: { body: polished } })) as typeof api.post);
+    fireEvent.click(polishButton());
+
+    await waitForElementToBeRemoved(alert);
+    expect(replyBox()).toHaveValue(polished);
+  });
+
+  test("lets the agent edit the polished reply before sending it", async () => {
+    const post = mockPolish();
+    renderWithQuery(<TicketReplyForm ticketId="t1" />);
+    polish("ur refund is on its way");
+    await waitFor(() => expect(replyBox()).toHaveValue(polished));
+
+    post.mockImplementation((() => Promise.resolve({ data: { ticket: repliedTicket } })) as typeof api.post);
+    send(`${polished} Refunds take 3-5 days.`);
+
+    await waitFor(() =>
+      expect(post).toHaveBeenLastCalledWith("/tickets/t1/replies", { body: `${polished} Refunds take 3-5 days.` }),
+    );
+  });
 });

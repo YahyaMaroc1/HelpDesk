@@ -299,8 +299,26 @@ describe("POST /api/tickets/:id/replies/polish", () => {
     expect(prisma.ticket.update).not.toHaveBeenCalled();
   });
 
+  test("passes no customer name when the email had none", async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ subject: "Help", senderName: null });
+
+    const res = await polish("t1", { body: "Hello" });
+
+    expect(res.status).toBe(200);
+    expect(ai.polishReply).toHaveBeenCalledWith(expect.objectContaining({ subject: "Help", customerName: null }));
+  });
+
+  test("accepts a draft of the maximum length", async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ subject: "Help", senderName: null });
+
+    const res = await polish("t1", { body: "x".repeat(20_000) });
+
+    expect(res.status).toBe(200);
+  });
+
   test.each([
     [{}, "Write a reply"],
+    [{ body: 42 }, "Write a reply"],
     [{ body: "   \n  " }, "Write a reply"],
     [{ body: "x".repeat(20_001) }, "Reply must be at most 20,000 characters"],
   ])("rejects %j", async (body, error) => {
@@ -325,6 +343,7 @@ describe("POST /api/tickets/:id/replies/polish", () => {
     const res = await polish("t1", { body: "Hello" });
 
     expect(res).toEqual({ status: 503, body: { error: "Reply polishing isn't set up" } });
+    expect(prisma.ticket.findUnique).not.toHaveBeenCalled();
     expect(ai.polishReply).not.toHaveBeenCalled();
   });
 
@@ -334,8 +353,10 @@ describe("POST /api/tickets/:id/replies/polish", () => {
 
     const res = await polish("t1", { body: "Hello" });
 
+    // The underlying error is logged, never sent to the client.
     expect(res).toEqual({ status: 502, body: { error: "The AI service didn't respond. Try again." } });
     expect(consoleError).toHaveBeenCalled();
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 });
