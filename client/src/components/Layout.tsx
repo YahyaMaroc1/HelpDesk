@@ -1,8 +1,25 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboardIcon, TicketIcon, UsersIcon } from "lucide-react";
 import { useState } from "react";
-import { Link, Outlet } from "react-router";
+import { Link, NavLink, Outlet } from "react-router";
+import { cn } from "cn";
+import { ThemeToggle } from "@/components/ThemeToggle.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import { authClient } from "../lib/auth-client.ts";
 import { Role } from "../lib/role.ts";
+
+// The nav bar and the page share one width and gutter, so the logo and "Sign out" line up with the content.
+const pageContainerClass = "mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8";
+
+// On phones the links show only their icons; the names stay for screen readers and tests.
+const navLabelClass = "sr-only sm:not-sr-only";
+
+// The current page gets a brand-coloured underline that sits on the nav's bottom border.
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    "-mb-px flex h-14 items-center gap-2 border-b-2 text-sm font-medium [&_svg]:size-4 [&_svg]:shrink-0",
+    isActive ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+  );
 
 export function Layout() {
   const { data: session } = authClient.useSession();
@@ -22,39 +39,38 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <nav className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-6">
+    <div className="min-h-screen bg-background text-foreground">
+      <nav className="border-t-3 border-b border-t-primary bg-card">
+        <div className={cn("flex h-14 items-center justify-between gap-4", pageContainerClass)}>
+          <div className="flex items-center gap-4 sm:gap-6">
             <Link to="/" className="text-lg font-semibold">
               HelpDesk
             </Link>
-            <Link to="/" className="text-sm font-medium text-gray-700 hover:text-gray-900">
-              Dashboard
-            </Link>
-            <Link to="/tickets" className="text-sm font-medium text-gray-700 hover:text-gray-900">
-              Tickets
-            </Link>
+            <NavLink to="/" end className={navLinkClass}>
+              <LayoutDashboardIcon aria-hidden="true" />
+              <span className={navLabelClass}>Dashboard</span>
+            </NavLink>
+            <NavLink to="/tickets" className={navLinkClass}>
+              <TicketIcon aria-hidden="true" />
+              <span className={navLabelClass}>Tickets</span>
+            </NavLink>
             {session?.user.role === Role.ADMIN && (
-              <Link to="/users" className="text-sm font-medium text-gray-700 hover:text-gray-900">
-                Users
-              </Link>
+              <NavLink to="/users" className={navLinkClass}>
+                <UsersIcon aria-hidden="true" />
+                <span className={navLabelClass}>Users</span>
+              </NavLink>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-700">{session?.user.name}</span>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              disabled={signingOut}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-100 disabled:opacity-50"
-            >
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden text-sm text-muted-foreground sm:inline">{session?.user.name}</span>
+            <ThemeToggle />
+            <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
               {signingOut ? "Signing out…" : "Sign out"}
-            </button>
+            </Button>
           </div>
         </div>
       </nav>
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className={cn("py-8", pageContainerClass)}>
         <Outlet />
       </main>
     </div>

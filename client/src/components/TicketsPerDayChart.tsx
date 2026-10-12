@@ -27,6 +27,9 @@ export function axisTicks(max: number) {
   return Array.from({ length: steps + 1 }, (_, i) => i * step);
 }
 
+// Shorter on phones, about 380px on desktop. The axis column and the plot use the same height.
+const plotHeightClass = "h-56 sm:h-72 lg:h-96";
+
 // A bar chart of the tickets created on each day, oldest first. The bars are for sighted users (with a tooltip on
 // hover); screen readers get the same numbers from a visually hidden table.
 export function TicketsPerDayChart({ days }: { days: DayCount[] }) {
@@ -49,14 +52,14 @@ export function TicketsPerDayChart({ days }: { days: DayCount[] }) {
           : { left: center(hovered), className: "-translate-x-1/2" };
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="gap-6 py-6">
+      <CardHeader className="px-6">
         <CardTitle>Tickets per day</CardTitle>
         <CardDescription>Last {days.length} days</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6">
         <div aria-hidden="true" className="flex gap-2">
-          <div className="relative h-48 w-8 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+          <div className={cn("relative w-8 shrink-0", plotHeightClass, "text-right text-xs text-muted-foreground tabular-nums")}>
             {ticks.map((tick) => (
               <span key={tick} className="absolute right-0 translate-y-1/2" style={{ bottom: percent(tick) }}>
                 {tick.toLocaleString()}
@@ -64,7 +67,7 @@ export function TicketsPerDayChart({ days }: { days: DayCount[] }) {
             ))}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="relative h-48">
+            <div className={cn("relative", plotHeightClass)}>
               {ticks.map((tick) => (
                 <div
                   key={tick}

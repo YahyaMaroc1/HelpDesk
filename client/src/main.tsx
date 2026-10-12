@@ -4,6 +4,9 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App.tsx";
 import { queryClient } from "./lib/query-client.ts";
+import { initTheme } from "./lib/theme.ts";
+
+initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

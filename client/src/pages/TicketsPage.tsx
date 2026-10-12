@@ -22,6 +22,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router";
 import { hasTicketFilters, noTicketFilters, TicketFilters, type TicketFilterValues } from "@/components/TicketFilters.tsx";
+import { TicketCategoryLabel } from "@/components/TicketCategoryLabel.tsx";
 import { TicketStatusBadge } from "@/components/TicketStatusBadge.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -30,7 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table.tsx";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 import { api, apiErrorMessage } from "@/lib/api.ts";
-import { TicketCategory, TicketStatus, ticketCategoryLabels } from "@/lib/ticket.ts";
+import { TicketCategory, TicketStatus } from "@/lib/ticket.ts";
 
 // Shape of GET /api/tickets (server/src/routes/tickets.ts).
 export type TicketListItem = {
@@ -88,7 +89,7 @@ const columns = column.columns([
     header: "Category",
     cell: ({ row }) =>
       row.original.category ? (
-        ticketCategoryLabels[row.original.category]
+        <TicketCategoryLabel category={row.original.category} />
       ) : (
         <span className="text-muted-foreground">Unclassified</span>
       ),
