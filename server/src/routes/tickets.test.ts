@@ -11,7 +11,7 @@ const prisma = {
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
 // The AI calls, stubbed so the tests never reach Gemini.
-const ai = { isPolishConfigured: mock(), polishReply: mock() };
+const ai = { isAiConfigured: mock(), polishReply: mock(), summarizeTicket: mock() };
 mock.module("../lib/ai.ts", () => ai);
 const { ticketsRouter } = await import("./tickets.ts");
 
@@ -46,8 +46,9 @@ beforeEach(() => {
   prisma.ticket.findUnique.mockReset().mockResolvedValue({ id: ticket.id });
   prisma.ticket.update.mockReset().mockResolvedValue(updatedTicket);
   prisma.user.findFirst.mockReset().mockResolvedValue({ id: "u1" });
-  ai.isPolishConfigured.mockReset().mockReturnValue(true);
+  ai.isAiConfigured.mockReset().mockReturnValue(true);
   ai.polishReply.mockReset().mockResolvedValue("Your refund is on its way. Thank you for your patience!");
+  ai.summarizeTicket.mockReset().mockResolvedValue("Jane wants a refund; Alan said it's on its way.");
 });
 
 type ResponseBody = { ticket?: { assignedTo: unknown }; error?: string };
@@ -338,7 +339,7 @@ describe("POST /api/tickets/:id/replies/polish", () => {
   });
 
   test("answers 503 when no Gemini API key is set", async () => {
-    ai.isPolishConfigured.mockReturnValue(false);
+    ai.isAiConfigured.mockReturnValue(false);
 
     const res = await polish("t1", { body: "Hello" });
 
@@ -356,7 +357,85 @@ describe("POST /api/tickets/:id/replies/polish", () => {
     // The underlying error is logged, never sent to the client.
     expect(res).toEqual({ status: 502, body: { error: "The AI service didn't respond. Try again." } });
     expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+});
+
+describe("POST /api/tickets/:id/summary", () => {
+  async function summarize(id: string) {
+    const res = await fetch(`${baseUrl}/api/tickets/${id}/summary`, { method: "POST" });
+    return { status: res.status, body: (await res.json()) as { summary?: string; error?: string } };
+  }
+
+  const messages = [
+    {
+      senderType: SenderType.CUSTOMER,
+      senderName: "Jane Doe",
+      senderEmail: "jane@example.com",
+      body: "Can I get a refund?",
+      createdAt: new Date("2026-10-09T09:30:00.000Z"),
+    },
+    {
+      senderType: SenderType.AGENT,
+      senderName: "Alan Agent",
+      senderEmail: "alan@example.com",
+      body: "It's on its way.",
+      createdAt: new Date("2026-10-10T11:00:00.000Z"),
+    },
+  ];
+
+  beforeEach(() => {
+    prisma.ticket.findUnique.mockResolvedValue({ subject: "Refund please", senderName: "Jane Doe", messages });
+  });
+
+  test("summarizes the whole thread and returns the summary without saving it", async () => {
+    const res = await summarize("t1");
+
+    expect(res).toEqual({ status: 200, body: { summary: "Jane wants a refund; Alan said it's on its way." } });
+    expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toMatchObject({
+      where: { id: "t1" },
+      select: { messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    });
+    expect(ai.summarizeTicket).toHaveBeenCalledWith({ subject: "Refund please", customerName: "Jane Doe", messages });
     expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test("generates a new summary on every request", async () => {
+    ai.summarizeTicket.mockResolvedValueOnce("First summary").mockResolvedValueOnce("Second summary");
+
+    expect((await summarize("t1")).body).toEqual({ summary: "First summary" });
+    expect((await summarize("t1")).body).toEqual({ summary: "Second summary" });
+    expect(ai.summarizeTicket).toHaveBeenCalledTimes(2);
+  });
+
+  test("answers 404 for a ticket that doesn't exist", async () => {
+    prisma.ticket.findUnique.mockResolvedValue(null);
+
+    const res = await summarize("missing");
+
+    expect(res).toEqual({ status: 404, body: { error: "Ticket not found" } });
+    expect(ai.summarizeTicket).not.toHaveBeenCalled();
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  test("answers 503 when no Gemini API key is set", async () => {
+    ai.isAiConfigured.mockReturnValue(false);
+
+    const res = await summarize("t1");
+
+    expect(res).toEqual({ status: 503, body: { error: "Ticket summaries aren't set up" } });
+    expect(prisma.ticket.findUnique).not.toHaveBeenCalled();
+    expect(ai.summarizeTicket).not.toHaveBeenCalled();
+  });
+
+  test("answers 502 when the AI call fails", async () => {
+    ai.summarizeTicket.mockRejectedValue(new Error("timeout"));
+    const consoleError = spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await summarize("t1");
+
+    expect(res).toEqual({ status: 502, body: { error: "The AI service didn't respond. Try again." } });
+    expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
   });
 });

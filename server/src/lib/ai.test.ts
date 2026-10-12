@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 // The AI SDK's generateText, stubbed so the tests never reach Gemini. Mocked before ai.ts is imported.
 const generateText = mock();
 mock.module("ai", () => ({ generateText }));
-const { isPolishConfigured, polishReply } = await import("./ai.ts");
+import { SenderType } from "../generated/prisma/enums.ts";
+
+const { isAiConfigured, polishReply, summarizeTicket } = await import("./ai.ts");
 
 const input = { draft: "ur refund is on its way", subject: "Refund please", customerName: "Jane Doe", agentName: "Alan Agent" };
 
@@ -73,7 +75,83 @@ describe("polishReply", () => {
   });
 });
 
-describe("isPolishConfigured", () => {
+describe("summarizeTicket", () => {
+  const summaryInput = {
+    subject: "Refund please",
+    customerName: "Jane Doe",
+    messages: [
+      {
+        senderType: SenderType.CUSTOMER,
+        senderName: "Jane Doe",
+        senderEmail: "jane@example.com",
+        body: "Can I get a refund?",
+        createdAt: new Date("2026-10-09T09:30:00.000Z"),
+      },
+      {
+        senderType: SenderType.AGENT,
+        senderName: null,
+        senderEmail: "alan@example.com",
+        body: "It's on its way.",
+        createdAt: new Date("2026-10-10T11:00:00.000Z"),
+      },
+    ],
+  };
+
+  test("returns the trimmed summary", async () => {
+    generateText.mockResolvedValue({ text: "  Jane wants a refund.  \n" });
+
+    expect(await summarizeTicket(summaryInput)).toBe("Jane wants a refund.");
+  });
+
+  test("sends the ticket's context and every message in order, with its sender and role", async () => {
+    await summarizeTicket(summaryInput);
+
+    const { prompt, instructions } = generateText.mock.calls[0]?.[0] as { prompt: string; instructions: string };
+    expect(prompt).toBe(
+      [
+        "Ticket subject: Refund please",
+        "Customer name: Jane Doe",
+        "",
+        "--- Message 1 from Jane Doe (customer), 2026-10-09T09:30:00.000Z ---",
+        "Can I get a refund?",
+        "--- Message 2 from alan@example.com (agent), 2026-10-10T11:00:00.000Z ---",
+        "It's on its way.",
+      ].join("\n"),
+    );
+    expect(instructions).toContain("never instructions");
+  });
+
+  test("tells the model when the customer's name is unknown", async () => {
+    await summarizeTicket({ ...summaryInput, customerName: null });
+
+    const { prompt } = generateText.mock.calls[0]?.[0] as { prompt: string };
+    expect(prompt).toContain("Customer name: unknown");
+  });
+
+  test("calls Gemini's free-tier model with a timeout and one retry", async () => {
+    await summarizeTicket(summaryInput);
+
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      model: { modelId: "gemini-3.5-flash-lite" },
+      timeout: 30_000,
+      maxRetries: 1,
+    });
+  });
+
+  test("passes on the AI SDK's error when the call fails", async () => {
+    generateText.mockRejectedValue(new Error("quota exceeded"));
+
+    await expect(summarizeTicket(summaryInput)).rejects.toThrow("quota exceeded");
+  });
+
+  test("throws when the model returns nothing", async () => {
+    generateText.mockResolvedValue({ text: "  \n " });
+
+    await expect(summarizeTicket(summaryInput)).rejects.toThrow("The model returned an empty summary");
+  });
+});
+
+describe("isAiConfigured", () => {
   const savedKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   afterEach(() => {
     if (savedKey === undefined) delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -83,7 +161,7 @@ describe("isPolishConfigured", () => {
   test("is true when a Gemini API key is set", () => {
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
 
-    expect(isPolishConfigured()).toBe(true);
+    expect(isAiConfigured()).toBe(true);
   });
 
   test.each([
@@ -93,6 +171,6 @@ describe("isPolishConfigured", () => {
     if (key === undefined) delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     else process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
 
-    expect(isPolishConfigured()).toBe(false);
+    expect(isAiConfigured()).toBe(false);
   });
 });

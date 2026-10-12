@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router";
 import { ReplyThread } from "@/components/ReplyThread.tsx";
 import { TicketDetails } from "@/components/TicketDetails.tsx";
 import { TicketReplyForm } from "@/components/TicketReplyForm.tsx";
+import { TicketSummary } from "@/components/TicketSummary.tsx";
 import { UpdateTicket } from "@/components/UpdateTicket.tsx";
 import { Alert, AlertDescription } from "@/components/ui/alert.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
@@ -57,22 +58,17 @@ export function TicketDetailPage() {
         // On wide screens the properties sit to the right of everything else. On narrow screens they come between
         // the details and the replies, so the controls aren't below a long conversation.
         <div className="grid items-start gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <TicketDetails ticket={ticket} />
+          <div className="space-y-6">
+            <TicketDetails ticket={ticket} />
+            {/* Below the customer's message, so the summary sits next to what it summarizes. */}
+            <TicketSummary key={ticket.id} ticketId={ticket.id} />
+          </div>
 
           <aside aria-label="Ticket properties" className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
             <UpdateTicket ticket={ticket} />
           </aside>
 
           <div className="space-y-6 lg:col-start-1">
-            {ticket.summary && (
-              <section aria-labelledby="ticket-summary" className="space-y-2">
-                <h2 id="ticket-summary" className="text-lg font-semibold">
-                  Summary
-                </h2>
-                <p className="text-sm whitespace-pre-wrap">{ticket.summary}</p>
-              </section>
-            )}
-
             <ReplyThread replies={replies} />
 
             <TicketReplyForm ticketId={ticket.id} />

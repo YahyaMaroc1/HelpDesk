@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/enums.ts";
-import { isPolishConfigured, polishReply } from "../lib/ai.ts";
+import { isAiConfigured, polishReply, summarizeTicket } from "../lib/ai.ts";
 import type { Session } from "../lib/auth.ts";
 import { prisma } from "../lib/prisma.ts";
 import { validate } from "../lib/validate.ts";
@@ -256,7 +256,7 @@ ticketsRouter.post("/:id/replies/polish", async (req, res) => {
   if (!body) return;
   const user: Session["user"] = res.locals.user;
 
-  if (!isPolishConfigured()) {
+  if (!isAiConfigured()) {
     res.status(503).json({ error: "Reply polishing isn't set up" });
     return;
   }
@@ -279,6 +279,52 @@ ticketsRouter.post("/:id/replies/polish", async (req, res) => {
     res.json({ body: polished });
   } catch (err) {
     console.error("Polishing a reply failed:", err);
+    res.status(502).json({ error: "The AI service didn't respond. Try again." });
+  }
+});
+
+// What POST /:id/summary passes to summarizeTicket (lib/ai.ts): the ticket and its whole thread, oldest first.
+export type SummaryInput = {
+  subject: string;
+  customerName: string | null;
+  messages: { senderType: SenderType; senderName: string | null; senderEmail: string; body: string; createdAt: Date }[];
+};
+
+// Summarizes the ticket and its whole thread with AI and returns it as `{ summary }` without saving anything: the
+// summary is only shown on the page until it's left or reloaded. Every request generates a new one.
+ticketsRouter.post("/:id/summary", async (req, res) => {
+  const params = validate(ticketParamsSchema, req.params, res, 404);
+  if (!params) return;
+
+  if (!isAiConfigured()) {
+    res.status(503).json({ error: "Ticket summaries aren't set up" });
+    return;
+  }
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: params.id },
+    select: {
+      subject: true,
+      senderName: true,
+      messages: {
+        select: { senderType: true, senderName: true, senderEmail: true, body: true, createdAt: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+    },
+  });
+  if (!ticket) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  try {
+    const summary = await summarizeTicket({
+      subject: ticket.subject,
+      customerName: ticket.senderName,
+      messages: ticket.messages,
+    });
+    res.json({ summary });
+  } catch (err) {
+    console.error("Summarizing a ticket failed:", err);
     res.status(502).json({ error: "The AI service didn't respond. Try again." });
   }
 });

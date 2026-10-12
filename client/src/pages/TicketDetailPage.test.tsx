@@ -114,7 +114,7 @@ describe("TicketDetailPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading ticket…");
   });
 
-  test("shows the ticket's details and summary", async () => {
+  test("shows the ticket's details", async () => {
     mockGet(() => ok({ ticket }));
     renderPage();
 
@@ -123,7 +123,8 @@ describe("TicketDetailPage", () => {
     expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue(TicketCategory.REFUND_REQUEST);
     expect(screen.getByRole("combobox", { name: "Assignee" })).toHaveValue("a1");
     expect(screen.getByText(formatTicketDate(ticket.updatedAt), { selector: "dd" })).toBeInTheDocument();
-    expect(screen.getByText(ticket.summary!)).toBeInTheDocument();
+    // Summaries are only shown after Summarize is clicked, never loaded with the ticket.
+    expect(screen.queryByText(ticket.summary!)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
@@ -147,6 +148,21 @@ describe("TicketDetailPage", () => {
     const replies = await screen.findByRole("region", { name: "Replies" });
     expect(replies).toHaveTextContent("No replies yet.");
     expect(within(replies).queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  test("shows the new summary after Summarize is clicked, below the message", async () => {
+    mockGet(() => ok({ ticket }));
+    const post = spyOn(api, "post").mockImplementation((() =>
+      ok({ summary: "Jane wants a refund; the agent said it's on its way." })) as typeof api.post);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Summarize" }));
+
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(summary).toHaveTextContent("Jane wants a refund; the agent said it's on its way.");
+    expect(post).toHaveBeenCalledWith("/tickets/t1/summary");
+    const message = screen.getByRole("region", { name: "Message" });
+    expect(message.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test("shows an unclassified, unassigned ticket without a summary", async () => {
