@@ -270,6 +270,17 @@ describe("TicketsPage filters", () => {
     expect(ticketRequests(get)).toHaveLength(2);
   });
 
+  test("offers only the statuses agents work with, not New or Processing", async () => {
+    mockGetTickets(() => ok({ tickets, total: 2 }));
+    renderPage();
+    await screen.findByText("Refund for my course");
+
+    const options = within(screen.getByRole("combobox", { name: "Status" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+    expect(options).toEqual(["All statuses", "Open", "Resolved", "Closed"]);
+  });
+
   test("shows a filtered empty state, and Clear filters brings back all tickets", async () => {
     const get = mockGetTickets(() => ok({ tickets, total: 2 }), () => ok({ tickets: [], total: 0 }), () => ok({ tickets, total: 2 }));
     renderPage();

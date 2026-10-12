@@ -22,13 +22,18 @@ const ticketListFields = {
   assignedTo: { select: { id: true, name: true } },
 } as const;
 
+// The statuses agents work with: they're the only ones listed and the only ones agents can set. NEW and PROCESSING
+// tickets are still with the AI (lib/auto-resolve-ticket.ts), so agents don't start on them. Keep in sync with
+// agentTicketStatuses in client/src/lib/ticket.ts.
+const agentStatuses = [TicketStatus.OPEN, TicketStatus.RESOLVED, TicketStatus.CLOSED] as const;
+
 // Keep in sync with client/src/pages/TicketsPage.tsx: the sortable columns are its table's column ids, the filters
 // are its filter controls, and the page sizes are its page size options. Empty filter values mean "any".
 const maxTicketPageSize = 100;
 const pageMessage = "Page must be a whole number of at least 1";
 const pageSizeMessage = `Page size must be a whole number from 1 to ${maxTicketPageSize}`;
 const listTicketsQuerySchema = z.object({
-  status: z.enum(TicketStatus, { error: "Invalid status" }).optional(),
+  status: z.enum(agentStatuses, { error: "Invalid status" }).optional(),
   // "unclassified": tickets without a category.
   category: z.union([z.enum(TicketCategory), z.literal("unclassified")], { error: "Invalid category" }).optional(),
   // A user id, or "unassigned".
@@ -51,9 +56,10 @@ const listTicketsQuerySchema = z.object({
 type ListTicketsQuery = z.infer<typeof listTicketsQuerySchema>;
 type SortBy = ListTicketsQuery["sortBy"];
 
+// Without a status filter, every status agents work with: NEW and PROCESSING tickets are left out.
 function ticketFilters({ status, category, assignee, q }: ListTicketsQuery): Prisma.TicketWhereInput {
   return {
-    ...(status && { status }),
+    status: status ?? { in: [...agentStatuses] },
     ...(category && { category: category === "unclassified" ? null : category }),
     ...(assignee && { assignedToId: assignee === "unassigned" ? null : assignee }),
     ...(q && {
@@ -163,7 +169,7 @@ ticketsRouter.get("/:id", async (req, res) => {
 const assigneeMessage = "Choose an assignee";
 const updateTicketSchema = z
   .object({
-    status: z.enum(TicketStatus, { error: "Invalid status" }).optional(),
+    status: z.enum(agentStatuses, { error: "Invalid status" }).optional(),
     category: z.enum(TicketCategory, { error: "Invalid category" }).optional(),
     assignedToId: z
       .union([z.string().trim().min(1, assigneeMessage).max(100, assigneeMessage), z.null()], {

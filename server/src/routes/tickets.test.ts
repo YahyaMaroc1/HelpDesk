@@ -6,12 +6,19 @@ import { SenderType, TicketCategory, TicketStatus } from "../generated/prisma/en
 // The router's database calls, stubbed so the tests need no database. Mocked before the router is imported, so
 // lib/prisma.ts (which connects to DATABASE_URL) is never loaded.
 const prisma = {
-  ticket: { findUnique: mock(), update: mock() },
+  ticket: { findMany: mock(), count: mock(), findUnique: mock(), update: mock() },
   user: { findFirst: mock() },
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
 // The AI calls, stubbed so the tests never reach Gemini.
-const ai = { isAiConfigured: mock(), polishReply: mock(), summarizeTicket: mock(), classifyTicket: mock() };
+const ai = {
+  isAiConfigured: mock(),
+  polishReply: mock(),
+  summarizeTicket: mock(),
+  classifyTicket: mock(),
+  autoResolveTicket: mock(),
+  aiSenderName: "AI Assistant",
+};
 mock.module("../lib/ai.ts", () => ai);
 const { ticketsRouter } = await import("./tickets.ts");
 
@@ -43,6 +50,8 @@ const updatedTicket = { ...ticket, assignedTo: { id: "u1", name: "Alan Agent" },
 
 beforeEach(() => {
   // An existing ticket and an active user by default; each test overrides what it needs.
+  prisma.ticket.findMany.mockReset().mockResolvedValue([ticket]);
+  prisma.ticket.count.mockReset().mockResolvedValue(1);
   prisma.ticket.findUnique.mockReset().mockResolvedValue({ id: ticket.id });
   prisma.ticket.update.mockReset().mockResolvedValue(updatedTicket);
   prisma.user.findFirst.mockReset().mockResolvedValue({ id: "u1" });
@@ -61,6 +70,48 @@ async function patchTicket(id: string, body: unknown) {
   });
   return { status: res.status, body: (await res.json()) as ResponseBody };
 }
+
+describe("GET /api/tickets", () => {
+  async function listTickets(query = "") {
+    const res = await fetch(`${baseUrl}/api/tickets${query}`);
+    return { status: res.status, body: (await res.json()) as { tickets?: unknown[]; total?: number; error?: string } };
+  }
+
+  const agentStatuses = { in: [TicketStatus.OPEN, TicketStatus.RESOLVED, TicketStatus.CLOSED] };
+
+  test("returns a page of tickets and the total, leaving out NEW and PROCESSING tickets", async () => {
+    const res = await listTickets();
+
+    expect(res).toEqual({ status: 200, body: { tickets: [ticket], total: 1 } });
+    const where = { status: agentStatuses };
+    expect(prisma.ticket.findMany.mock.calls[0]?.[0]).toMatchObject({ where, skip: 0, take: 10 });
+    expect(prisma.ticket.count).toHaveBeenCalledWith({ where });
+  });
+
+  test("filters by status, category and assignee", async () => {
+    await listTickets(`?status=${TicketStatus.OPEN}&category=unclassified&assignee=unassigned`);
+
+    const where = { status: TicketStatus.OPEN, category: null, assignedToId: null };
+    expect(prisma.ticket.findMany.mock.calls[0]?.[0]).toMatchObject({ where });
+    expect(prisma.ticket.count).toHaveBeenCalledWith({ where });
+  });
+
+  test("leaves out NEW and PROCESSING tickets when sorting by assignee too", async () => {
+    await listTickets("?sortBy=assignee");
+
+    expect(prisma.ticket.findMany).toHaveBeenCalled();
+    for (const [{ where }] of prisma.ticket.findMany.mock.calls) {
+      expect(where.AND[0]).toEqual({ status: agentStatuses });
+    }
+  });
+
+  test.each([TicketStatus.NEW, TicketStatus.PROCESSING])("rejects filtering by %s with 400", async (status) => {
+    const res = await listTickets(`?status=${status}`);
+
+    expect(res).toEqual({ status: 400, body: { error: "Invalid status" } });
+    expect(prisma.ticket.findMany).not.toHaveBeenCalled();
+  });
+});
 
 describe("GET /api/tickets/:id", () => {
   async function getTicket(id: string) {
@@ -187,6 +238,8 @@ describe("PATCH /api/tickets/:id", () => {
     ["an unknown status", { status: "PENDING" }, "Invalid status"],
     ["a lowercase status", { status: "open" }, "Invalid status"],
     ["a null status", { status: null }, "Invalid status"],
+    ["the AI's NEW status", { status: TicketStatus.NEW }, "Invalid status"],
+    ["the AI's PROCESSING status", { status: TicketStatus.PROCESSING }, "Invalid status"],
     ["an unknown category", { category: "BILLING" }, "Invalid category"],
     // Tickets only start unclassified; agents can't clear the category.
     ["a null category", { category: null }, "Invalid category"],

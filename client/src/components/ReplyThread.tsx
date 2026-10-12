@@ -25,16 +25,24 @@ export function ReplyThread({ replies }: { replies: TicketMessage[] }) {
   );
 }
 
-// One email in the thread. The body is plain text, so line breaks are kept as they arrived.
+const senderLabels: Record<SenderType, string> = {
+  [SenderType.CUSTOMER]: "Customer",
+  [SenderType.AGENT]: "Agent",
+  [SenderType.AI]: "AI",
+};
+
+// One email in the thread. The body is plain text, so line breaks are kept as they arrived. The AI's replies (when it
+// resolved the ticket from the knowledge base) show only its name: its sender address is a placeholder.
 function MessageCard({ message }: { message: TicketMessage }) {
   const fromCustomer = message.senderType === SenderType.CUSTOMER;
+  const showEmail = message.senderName && message.senderType !== SenderType.AI;
   return (
     <Card className={fromCustomer ? undefined : "bg-muted"}>
       <CardHeader className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-sm">
           <span className="font-medium">{message.senderName ?? message.senderEmail}</span>
-          {message.senderName && <span className="text-muted-foreground"> &lt;{message.senderEmail}&gt;</span>}
-          <span className="text-muted-foreground"> · {fromCustomer ? "Customer" : "Agent"}</span>
+          {showEmail && <span className="text-muted-foreground"> &lt;{message.senderEmail}&gt;</span>}
+          <span className="text-muted-foreground"> · {senderLabels[message.senderType]}</span>
         </div>
         <time dateTime={message.createdAt} className="text-xs text-muted-foreground">
           {formatTicketDate(message.createdAt)}

@@ -12,9 +12,11 @@ const prisma = {
   $transaction: mock(),
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
-// The job queue, stubbed so the tests need no pg-boss (lib/classify-ticket.test.ts covers the job itself).
+// The job queue, stubbed so the tests need no pg-boss (lib/classify-ticket.test.ts and
+// lib/auto-resolve-ticket.test.ts cover the jobs themselves).
 const enqueueTicketClassification = mock();
-mock.module("../lib/queue.ts", () => ({ enqueueTicketClassification }));
+const enqueueTicketAutoResolution = mock();
+mock.module("../lib/queue.ts", () => ({ enqueueTicketClassification, enqueueTicketAutoResolution }));
 const { webhooksRouter } = await import("./webhooks.ts");
 
 // Mounted as in app.ts: before any app-wide express.json(), since the router checks the secret and parses the
@@ -48,6 +50,7 @@ beforeEach(() => {
   // Runs the callback with the stubbed client as its transaction client.
   prisma.$transaction.mockReset().mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
   enqueueTicketClassification.mockReset().mockResolvedValue(undefined);
+  enqueueTicketAutoResolution.mockReset().mockResolvedValue(undefined);
 });
 
 // A valid email; override fields per test.
@@ -122,7 +125,7 @@ describe("POST /api/webhooks/inbound-email validation", () => {
 });
 
 describe("POST /api/webhooks/inbound-email new emails", () => {
-  test("creates an open ticket with the email as its first customer message", async () => {
+  test("creates a NEW ticket with the email as its first customer message", async () => {
     const res = await post(email());
 
     expect(res).toEqual({ status: 201, body: { ticketId: "t-new", result: "created" } });
@@ -131,6 +134,7 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
         subject: "Help needed",
         senderEmail: "jane@example.com",
         senderName: "Jane Doe",
+        status: TicketStatus.NEW,
         messages: {
           create: {
             senderType: SenderType.CUSTOMER,
@@ -154,6 +158,28 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
     expect(prisma.ticket.create.mock.invocationCallOrder[0]).toBeLessThan(
       enqueueTicketClassification.mock.invocationCallOrder[0]!,
     );
+  });
+
+  test("queues the new ticket for the AI to resolve, in the transaction that creates it", async () => {
+    const res = await post(email());
+
+    expect(res.status).toBe(201);
+    expect(enqueueTicketAutoResolution).toHaveBeenCalledWith("t-new", prisma);
+    expect(prisma.ticket.create.mock.invocationCallOrder[0]).toBeLessThan(
+      enqueueTicketAutoResolution.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  test("fails without answering 201 when the auto-resolve job can't be queued", async () => {
+    enqueueTicketAutoResolution.mockRejectedValue(new Error("connection lost"));
+
+    const res = await fetch(`${baseUrl}/api/webhooks/inbound-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Webhook-Secret": secret },
+      body: JSON.stringify(email()),
+    });
+
+    expect(res.status).toBe(500);
   });
 
   test("fails without answering 201 when the job can't be queued, so the email is redelivered", async () => {
@@ -231,12 +257,13 @@ describe("POST /api/webhooks/inbound-email replies", () => {
     expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({ data: { status: TicketStatus.OPEN } });
   });
 
-  test("doesn't classify the ticket again", async () => {
+  test("doesn't classify or auto-resolve the ticket again", async () => {
     threadIs(TicketStatus.OPEN);
 
     await post(email({ references: "<abc@mail.example.com>" }));
 
     expect(enqueueTicketClassification).not.toHaveBeenCalled();
+    expect(enqueueTicketAutoResolution).not.toHaveBeenCalled();
   });
 
   test.each([TicketStatus.OPEN, TicketStatus.CLOSED])("leaves a %s ticket's status alone", async (status) => {

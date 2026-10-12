@@ -48,6 +48,21 @@ describe("ReplyThread", () => {
     expect(items()[0]).not.toHaveTextContent("<");
   });
 
+  test("labels the AI's reply with its name and AI, without its placeholder address", () => {
+    const aiReply: TicketMessage = {
+      id: "m4",
+      senderType: SenderType.AI,
+      body: "Hi Jane,\n\nGo to the login page and click Forgot Password.",
+      senderEmail: "ai-assistant@helpdesk.invalid",
+      senderName: "AI Assistant",
+      createdAt: "2026-10-10T13:00:00.000Z",
+    };
+    render(<ReplyThread replies={[aiReply]} />);
+
+    expect(items()[0]).toHaveTextContent(/^AI Assistant · AI/);
+    expect(items()[0]).not.toHaveTextContent("ai-assistant@helpdesk.invalid");
+  });
+
   test("shows when each reply was sent", () => {
     render(<ReplyThread replies={[agentReply, customerFollowUp]} />);
 

@@ -2,6 +2,8 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { TicketStatus, ticketStatusLabels } from "@/lib/ticket.ts";
 
 const statusVariants = {
+  [TicketStatus.NEW]: "outline",
+  [TicketStatus.PROCESSING]: "outline",
   [TicketStatus.OPEN]: "default",
   [TicketStatus.RESOLVED]: "secondary",
   [TicketStatus.CLOSED]: "outline",

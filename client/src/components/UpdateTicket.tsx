@@ -2,13 +2,20 @@ import { TicketAssigneeSelect } from "@/components/TicketAssigneeSelect.tsx";
 import { TicketField } from "@/components/TicketDetails.tsx";
 import { TicketFieldSelect, type TicketFieldOption } from "@/components/TicketFieldSelect.tsx";
 import { Card, CardContent } from "@/components/ui/card.tsx";
-import { TicketCategory, TicketStatus, ticketCategoryLabels, ticketStatusLabels } from "@/lib/ticket.ts";
+import {
+  agentTicketStatuses,
+  TicketCategory,
+  type TicketStatus,
+  ticketCategoryLabels,
+  ticketStatusLabels,
+} from "@/lib/ticket.ts";
 import type { TicketDetail } from "@/pages/TicketDetailPage.tsx";
 
-const statusOptions: TicketFieldOption[] = Object.values(TicketStatus).map((status) => ({
+const statusOptions: TicketFieldOption[] = agentTicketStatuses.map((status) => ({
   value: status,
   label: ticketStatusLabels[status],
 }));
+const isAgentStatus = (status: TicketStatus) => (agentTicketStatuses as readonly TicketStatus[]).includes(status);
 const categoryOptions: TicketFieldOption[] = Object.values(TicketCategory).map((category) => ({
   value: category,
   label: ticketCategoryLabels[category],
@@ -26,7 +33,12 @@ export function UpdateTicket({ ticket }: { ticket: TicketDetail }) {
               ticketId={ticket.id}
               label="Status"
               value={ticket.status}
-              options={statusOptions}
+              // Agents can't set New or Processing (the AI is still on the ticket), so they're only there to show it.
+              options={
+                isAgentStatus(ticket.status)
+                  ? statusOptions
+                  : [{ value: ticket.status, label: ticketStatusLabels[ticket.status], disabled: true }, ...statusOptions]
+              }
               toUpdate={(value) => ({ status: value as TicketStatus })}
               errorPrefix="Couldn't change the status"
             />

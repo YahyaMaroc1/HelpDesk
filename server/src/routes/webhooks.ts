@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Prisma } from "../generated/prisma/client.ts";
 import { SenderType, TicketStatus } from "../generated/prisma/enums.ts";
 import { prisma } from "../lib/prisma.ts";
-import { enqueueTicketClassification } from "../lib/queue.ts";
+import { enqueueTicketAutoResolution, enqueueTicketClassification } from "../lib/queue.ts";
 import { validate } from "../lib/validate.ts";
 
 // Called by the mail pipeline, not by signed-in users: app.ts mounts this router without requireAuth, and every
@@ -124,14 +124,22 @@ webhooksRouter.post("/inbound-email", async (req, res) => {
       return;
     }
 
-    // The ticket is classified by a background job (lib/queue.ts), so the mail pipeline gets its answer without
-    // waiting for the model. The job is queued in the same transaction as the ticket.
+    // The ticket starts NEW. Background jobs (lib/queue.ts) classify it and try to resolve it from the knowledge base,
+    // after which it's RESOLVED or OPEN, so the mail pipeline gets its answer without waiting for the model. The jobs
+    // are queued in the same transaction as the ticket.
     const ticket = await prisma.$transaction(async (tx) => {
       const ticket = await tx.ticket.create({
-        data: { subject, senderEmail: from, senderName: fromName, messages: { create: message } },
+        data: {
+          subject,
+          senderEmail: from,
+          senderName: fromName,
+          status: TicketStatus.NEW,
+          messages: { create: message },
+        },
         select: { id: true },
       });
       await enqueueTicketClassification(ticket.id, tx);
+      await enqueueTicketAutoResolution(ticket.id, tx);
       return ticket;
     });
     res.status(201).json({ ticketId: ticket.id, result: "created" });

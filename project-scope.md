@@ -26,7 +26,9 @@ We receive hundreds of support emails daily. Our agents manually read, classify,
 
 Each ticket has exactly one status:
 
-- **Open** – new or still being worked on
+- **New** – just arrived; the AI hasn't looked at it yet
+- **Processing** – the AI is trying to resolve it from the knowledge base
+- **Open** – needs an agent, or is still being worked on
 - **Resolved** – a solution has been provided
 - **Closed** – no further action needed
 

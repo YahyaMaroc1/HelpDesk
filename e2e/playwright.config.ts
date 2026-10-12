@@ -52,6 +52,9 @@ export default defineConfig({
       ADMIN_PASSWORD: testAdmin.password,
       E2E_AGENTS: JSON.stringify([testAgent, testEscalationAgent]),
       INBOUND_EMAIL_SECRET: inboundEmailSecret,
+      // No AI on the test server: new tickets are neither classified nor auto-resolved by Gemini, so the auto-resolve
+      // job opens them right away and their threads hold only what the tests send.
+      GOOGLE_GENERATIVE_AI_API_KEY: "",
     },
   },
 });

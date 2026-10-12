@@ -292,6 +292,20 @@ describe("TicketDetailPage status and category", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["tickets"] });
   });
 
+  test.each([
+    [TicketStatus.NEW, "New"],
+    [TicketStatus.PROCESSING, "Processing"],
+  ])("shows a %s ticket's status, which agents can't set, and lets them open it", async (status, label) => {
+    const patch = mockTicketApi(undefined, { ...ticket, status });
+    renderPage();
+    const select = await statusSelect();
+
+    expect(select).toHaveValue(status);
+    expect(within(select).getByRole("option", { name: label })).toBeDisabled();
+    fireEvent.change(select, { target: { value: TicketStatus.OPEN } });
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tickets/t1", { status: TicketStatus.OPEN }));
+  });
+
   test("changes the category", async () => {
     const patch = mockTicketApi();
     renderPage();

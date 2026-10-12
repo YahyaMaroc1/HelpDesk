@@ -6,7 +6,14 @@ import { TicketCategory } from "../generated/prisma/enums.ts";
 // files, so the ai.ts stub has all of its exports, as in routes/tickets.test.ts.
 const isAiConfigured = mock();
 const classifyTicket = mock();
-mock.module("./ai.ts", () => ({ isAiConfigured, classifyTicket, polishReply: mock(), summarizeTicket: mock() }));
+mock.module("./ai.ts", () => ({
+  isAiConfigured,
+  classifyTicket,
+  polishReply: mock(),
+  summarizeTicket: mock(),
+  autoResolveTicket: mock(),
+  aiSenderName: "AI Assistant",
+}));
 const prisma = { ticket: { findUnique: mock(), updateMany: mock() } };
 mock.module("./prisma.ts", () => ({ prisma }));
 

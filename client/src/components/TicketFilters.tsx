@@ -2,7 +2,13 @@ import { SearchIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select.tsx";
-import { TicketCategory, TicketStatus, ticketCategoryLabels, ticketStatusLabels } from "@/lib/ticket.ts";
+import {
+  agentTicketStatuses,
+  TicketCategory,
+  type TicketStatus,
+  ticketCategoryLabels,
+  ticketStatusLabels,
+} from "@/lib/ticket.ts";
 
 // The ticket list's filters, as GET /api/tickets takes them (listTicketsQuerySchema in server/src/routes/tickets.ts).
 // "" means "any".
@@ -51,7 +57,7 @@ export function TicketFilters({ value, onChange, assignees }: Props) {
         onChange={(e) => set("status", e.target.value as TicketFilterValues["status"])}
       >
         <NativeSelectOption value="">All statuses</NativeSelectOption>
-        {Object.values(TicketStatus).map((status) => (
+        {agentTicketStatuses.map((status) => (
           <NativeSelectOption key={status} value={status}>
             {ticketStatusLabels[status]}
           </NativeSelectOption>

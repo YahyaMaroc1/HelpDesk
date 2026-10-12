@@ -119,6 +119,7 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 - [ ] 9.7 Generate a suggestion automatically for new tickets
 - [ ] 9.8 Client: "Use suggestion" fills the reply box so the agent can edit it before sending
 - [ ] 9.9 Client: "Regenerate" button
+- [x] 9.10 Auto-resolve new tickets that the knowledge base (`knowledge-base.md`) answers: tickets start New, are Processing while a background job tries to answer them with AI, then become Resolved (with the AI's reply) or Open; New and Processing tickets are hidden from the list
 
 **Done when:** an agent opens a ticket, sees a suggested reply based on the knowledge base, edits it and sends it.
 

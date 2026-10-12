@@ -13,7 +13,12 @@ enum Role {
   AGENT
 }
 
+// A ticket starts NEW, is PROCESSING while the AI tries to resolve it from the knowledge base
+// (lib/auto-resolve-ticket.ts), then becomes RESOLVED (the AI answered) or OPEN (it's for the agents). NEW and
+// PROCESSING tickets are left out of the ticket list, and agents only set OPEN, RESOLVED and CLOSED.
 enum TicketStatus {
+  NEW
+  PROCESSING
   OPEN
   RESOLVED
   CLOSED
@@ -25,10 +30,12 @@ enum TicketCategory {
   REFUND_REQUEST
 }
 
-// Who wrote a message: the customer (an inbound email) or an agent (a reply from the app).
+// Who wrote a message: the customer (an inbound email), an agent (a reply from the app) or the AI, when it resolves
+// a new ticket from the knowledge base by itself.
 enum SenderType {
   CUSTOMER
   AGENT
+  AI
 }
 
 model User {
@@ -112,7 +119,7 @@ model Ticket {
   subject      String
   senderEmail  String
   senderName   String?
-  status       TicketStatus    @default(OPEN)
+  status       TicketStatus    @default(NEW)
   // Null until the ticket is classified.
   category     TicketCategory?
   summary      String?
@@ -128,16 +135,16 @@ model Ticket {
 }
 
 model Message {
-  id             String           @id @default(cuid())
+  id             String     @id @default(cuid())
   ticketId       String
-  ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket         Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   senderType     SenderType
   body           String
   senderEmail    String
   senderName     String?
   // The email's Message-ID without angle brackets: used to thread replies and ignore duplicate deliveries.
-  emailMessageId String?          @unique
-  createdAt      DateTime         @default(now())
+  emailMessageId String?    @unique
+  createdAt      DateTime   @default(now())
 
   @@index([ticketId])
   @@map("message")
