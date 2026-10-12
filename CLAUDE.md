@@ -38,6 +38,7 @@ server/   Express 5 + TypeScript, running on Bun
   src/routes/    one router per resource, mounted under /api
   src/**/*.test.ts  route unit tests (bun test, Prisma mocked; see "Server unit tests")
   src/lib/prisma.ts  the shared PrismaClient (import `prisma` from here; never create another)
+  src/lib/queue.ts   pg-boss background jobs (`boss`, `startQueue`, queue names, enqueue helpers)
   src/lib/auth.ts    Better Auth config (email/password, sessions stored in Postgres)
   src/middleware/requireAuth.ts  401s without a session; sets res.locals.user / res.locals.session
   src/middleware/requireAdmin.ts 403s non-admins; use after requireAuth
@@ -164,11 +165,12 @@ Run from the project root:
 - `bun run tickets:sample` (from `server/`) inserts 100 varied sample tickets into the dev database through Prisma (statuses, categories incl. unclassified, assignees from the active users incl. unassigned, dates over the last 90 days), for trying out sorting and filtering. It refuses if they exist; `--reset` replaces them. They are marked by `@sample.helpdesk.invalid` Message-IDs, so `--reset` leaves other tickets alone.
 - `bun run conversation:sample <ticketId>` (from `server/`) adds a long sample conversation to one dev ticket: 20 replies alternating agent (the assignee, else the first active user) and customer, each at least 20 lines, dated between the newest message and now. It refuses if they exist; `--reset` replaces them (marked by `reply-N.<ticketId>@sample.helpdesk.invalid` Message-IDs).
 
-## AI reply polishing and ticket summaries
+## AI reply polishing, ticket summaries and classification
 
 - The ticket page's reply form has a **Polish** button: `POST /api/tickets/:id/replies/polish` (same body as `/replies`) rewrites the draft with Google Gemini `gemini-3.5-flash-lite` (free tier) through the Vercel AI SDK and returns `{ body }` without saving; the agent reviews it and sends it as usual. The code, not the model, adds the greeting (`Hi <customer's first name>,`, or `Hi there,`) and the sign-off (`Best regards,` + the agent's name); the prompt tells the model to leave both out.
 - Below the customer's message, the ticket page has a **Summarize** button (`components/TicketSummary.tsx`): `POST /api/tickets/:id/summary` (no body) summarizes the ticket and its whole thread with the same model and returns `{ summary }` **without saving it**: the client keeps it only in the mutation's state, so it's gone after a reload or on another ticket. Every click generates a new summary. (`Ticket.summary` stays for the automatic summaries of Phase 8; nothing writes it yet.)
-- The AI calls live in `server/src/lib/ai.ts` (`polishReply`, `summarizeTicket`, `isAiConfigured`); route tests `mock.module("../lib/ai.ts", ...)` so they never reach Gemini. It needs `GOOGLE_GENERATIVE_AI_API_KEY` in `server/.env` (503 without it; 502 if the call fails).
+- New tickets are **classified automatically** by a **pg-boss** background job (`server/src/lib/queue.ts`). The webhook creates the ticket and queues a `classify-ticket` job in one Prisma transaction (`enqueueTicketClassification(id, tx)`), then answers 201 without waiting for the model. The worker runs in the API process (`index.ts` awaits `startQueue()` before listening, and stops pg-boss on SIGINT/SIGTERM) and calls `classifyTicketJob` (`server/src/lib/classify-ticket.ts`): it asks the model for one of the three categories from the subject and first message (`classifyTicket`, the AI SDK's `Output.choice`, which rejects any other answer) and saves it only if the ticket is still unclassified, so an agent's own choice wins. Failures are logged and rethrown, so pg-boss retries twice with backoff; after that the ticket stays unclassified. Without the API key the job does nothing. Replies appended to a ticket aren't classified. pg-boss keeps its tables in the `pgboss` schema of the same database and creates/migrates it on start; inspect jobs with `select name, state, retry_count, output from pgboss.job`.
+- The AI calls live in `server/src/lib/ai.ts` (`polishReply`, `summarizeTicket`, `classifyTicket`, `isAiConfigured`); route tests `mock.module("../lib/ai.ts", ...)` so they never reach Gemini (Bun shares module mocks between test files, so stub all of its exports). It needs `GOOGLE_GENERATIVE_AI_API_KEY` in `server/.env` (503 without it; 502 if the call fails).
 
 ## Data fetching (client)
 

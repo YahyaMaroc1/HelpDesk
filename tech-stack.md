@@ -23,6 +23,10 @@
 
 * Prisma
 
+## Background jobs
+
+* pg-boss (job queue in the same PostgreSQL database) for AI ticket classification
+
 ## Testing
 
 * Playwright for end-to-end tests, against a separate `helpdesk_test` database

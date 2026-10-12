@@ -97,9 +97,9 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 ## Phase 8 – AI Classification and Summaries
 
 - [ ] 8.1 Claude API client wrapper with the API key from the environment, timeouts and retries
-- [ ] 8.2 Classification: prompt that returns exactly one of the three categories in a structured format; validate the response
+- [x] 8.2 Classification: prompt that returns exactly one of the three categories in a structured format; validate the response
 - [x] 8.3 Summary: prompt that produces a short summary of the ticket thread
-- [ ] 8.4 Run classification and summary after a ticket is created, without blocking the webhook response
+- [ ] 8.4 Run classification and summary after a ticket is created, without blocking the webhook response (classification is done; the automatic summary is still to do)
 - [ ] 8.5 Re-run the summary when a new inbound message arrives
 - [ ] 8.6 If an AI call fails, keep the ticket usable (category empty, no summary) and log the error
 - [ ] 8.7 Client: show the category and summary on the ticket list and detail page

@@ -11,7 +11,7 @@ const prisma = {
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
 // The AI calls, stubbed so the tests never reach Gemini.
-const ai = { isAiConfigured: mock(), polishReply: mock(), summarizeTicket: mock() };
+const ai = { isAiConfigured: mock(), polishReply: mock(), summarizeTicket: mock(), classifyTicket: mock() };
 mock.module("../lib/ai.ts", () => ai);
 const { ticketsRouter } = await import("./tickets.ts");
 

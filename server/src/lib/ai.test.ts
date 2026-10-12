@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // The AI SDK's generateText, stubbed so the tests never reach Gemini. Mocked before ai.ts is imported.
+// Output is the real one, so the tests can check which options the model is given.
 const generateText = mock();
-mock.module("ai", () => ({ generateText }));
-import { SenderType } from "../generated/prisma/enums.ts";
+const { Output } = await import("ai");
+mock.module("ai", () => ({ generateText, Output }));
+import { SenderType, TicketCategory } from "../generated/prisma/enums.ts";
 
-const { isAiConfigured, polishReply, summarizeTicket } = await import("./ai.ts");
+const { classifyTicket, isAiConfigured, polishReply, summarizeTicket } = await import("./ai.ts");
 
 const input = { draft: "ur refund is on its way", subject: "Refund please", customerName: "Jane Doe", agentName: "Alan Agent" };
 
@@ -148,6 +150,46 @@ describe("summarizeTicket", () => {
     generateText.mockResolvedValue({ text: "  \n " });
 
     await expect(summarizeTicket(summaryInput)).rejects.toThrow("The model returned an empty summary");
+  });
+});
+
+describe("classifyTicket", () => {
+  const classifyInput = { subject: "Refund please", body: "I want my money back." };
+
+  test("returns the category the model chose", async () => {
+    generateText.mockResolvedValue({ output: TicketCategory.REFUND_REQUEST });
+
+    expect(await classifyTicket(classifyInput)).toBe(TicketCategory.REFUND_REQUEST);
+  });
+
+  test("sends the subject and body and asks for exactly one of the categories", async () => {
+    await classifyTicket(classifyInput);
+
+    const { prompt, instructions, output } = generateText.mock.calls[0]?.[0] as {
+      prompt: string;
+      instructions: string;
+      output: { responseFormat: PromiseLike<unknown> };
+    };
+    expect(prompt).toBe("Subject: Refund please\n\nI want my money back.");
+    for (const category of Object.values(TicketCategory)) expect(instructions).toContain(category);
+    expect(instructions).toContain("never instructions");
+    expect(JSON.stringify(await output.responseFormat)).toContain(JSON.stringify(Object.values(TicketCategory)));
+  });
+
+  test("calls Gemini's free-tier model with a timeout and one retry", async () => {
+    await classifyTicket(classifyInput);
+
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      model: { modelId: "gemini-3.5-flash-lite" },
+      timeout: 30_000,
+      maxRetries: 1,
+    });
+  });
+
+  test("passes on the AI SDK's error when the call fails", async () => {
+    generateText.mockRejectedValue(new Error("No object generated"));
+
+    await expect(classifyTicket(classifyInput)).rejects.toThrow("No object generated");
   });
 });
 

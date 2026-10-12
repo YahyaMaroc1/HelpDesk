@@ -9,8 +9,12 @@ import { SenderType, TicketStatus } from "../generated/prisma/enums.ts";
 const prisma = {
   message: { findUnique: mock(), findFirst: mock() },
   ticket: { create: mock(), update: mock() },
+  $transaction: mock(),
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
+// The job queue, stubbed so the tests need no pg-boss (lib/classify-ticket.test.ts covers the job itself).
+const enqueueTicketClassification = mock();
+mock.module("../lib/queue.ts", () => ({ enqueueTicketClassification }));
 const { webhooksRouter } = await import("./webhooks.ts");
 
 // Mounted as in app.ts: before any app-wide express.json(), since the router checks the secret and parses the
@@ -41,6 +45,9 @@ beforeEach(() => {
   prisma.message.findFirst.mockReset().mockResolvedValue(null);
   prisma.ticket.create.mockReset().mockResolvedValue({ id: "t-new" });
   prisma.ticket.update.mockReset().mockResolvedValue({});
+  // Runs the callback with the stubbed client as its transaction client.
+  prisma.$transaction.mockReset().mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
+  enqueueTicketClassification.mockReset().mockResolvedValue(undefined);
 });
 
 // A valid email; override fields per test.
@@ -138,6 +145,29 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
     });
   });
 
+  test("queues the new ticket for classification in the transaction that creates it", async () => {
+    const res = await post(email());
+
+    expect(res.status).toBe(201);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(enqueueTicketClassification).toHaveBeenCalledWith("t-new", prisma);
+    expect(prisma.ticket.create.mock.invocationCallOrder[0]).toBeLessThan(
+      enqueueTicketClassification.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  test("fails without answering 201 when the job can't be queued, so the email is redelivered", async () => {
+    enqueueTicketClassification.mockRejectedValue(new Error("connection lost"));
+
+    const res = await fetch(`${baseUrl}/api/webhooks/inbound-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Webhook-Secret": secret },
+      body: JSON.stringify(email()),
+    });
+
+    expect(res.status).toBe(500);
+  });
+
   test("lowercases the sender, strips the Message-ID's brackets and fills in an empty subject and name", async () => {
     await post(email({ from: " Jane@Example.COM ", fromName: "  ", subject: "", messageId: "abc@mail.example.com" }));
 
@@ -201,6 +231,14 @@ describe("POST /api/webhooks/inbound-email replies", () => {
     expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({ data: { status: TicketStatus.OPEN } });
   });
 
+  test("doesn't classify the ticket again", async () => {
+    threadIs(TicketStatus.OPEN);
+
+    await post(email({ references: "<abc@mail.example.com>" }));
+
+    expect(enqueueTicketClassification).not.toHaveBeenCalled();
+  });
+
   test.each([TicketStatus.OPEN, TicketStatus.CLOSED])("leaves a %s ticket's status alone", async (status) => {
     threadIs(status);
 
@@ -223,6 +261,7 @@ describe("POST /api/webhooks/inbound-email duplicates", () => {
       { where: { emailMessageId: "abc@mail.example.com" }, select: { ticketId: true } },
     ]);
     expectNothingWritten();
+    expect(enqueueTicketClassification).not.toHaveBeenCalled();
   });
 
   test("reports a duplicate when a concurrent delivery saved the same email first", async () => {
