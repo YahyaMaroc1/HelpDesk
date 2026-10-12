@@ -52,7 +52,7 @@ beforeEach(() => {
   // An existing ticket and an active user by default; each test overrides what it needs.
   prisma.ticket.findMany.mockReset().mockResolvedValue([ticket]);
   prisma.ticket.count.mockReset().mockResolvedValue(1);
-  prisma.ticket.findUnique.mockReset().mockResolvedValue({ id: ticket.id });
+  prisma.ticket.findUnique.mockReset().mockResolvedValue({ id: ticket.id, status: TicketStatus.OPEN });
   prisma.ticket.update.mockReset().mockResolvedValue(updatedTicket);
   prisma.user.findFirst.mockReset().mockResolvedValue({ id: "u1" });
   ai.isAiConfigured.mockReset().mockReturnValue(true);
@@ -210,12 +210,49 @@ describe("PATCH /api/tickets/:id", () => {
     });
   });
 
+  test("records when an open ticket is resolved", async () => {
+    await patchTicket("t1", { status: TicketStatus.RESOLVED });
+
+    expect(prisma.ticket.findUnique.mock.calls[0]?.[0]).toEqual({ where: { id: "t1" }, select: { status: true } });
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data.resolvedAt).toBeInstanceOf(Date);
+  });
+
+  test("records when an open ticket is closed", async () => {
+    await patchTicket("t1", { status: TicketStatus.CLOSED });
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data.resolvedAt).toBeInstanceOf(Date);
+  });
+
+  test("keeps the resolution time when a resolved ticket is closed", async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ status: TicketStatus.RESOLVED });
+
+    await patchTicket("t1", { status: TicketStatus.CLOSED });
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data).toMatchObject({ status: TicketStatus.CLOSED, resolvedAt: undefined });
+  });
+
+  test.each([TicketStatus.RESOLVED, TicketStatus.CLOSED])("clears the resolution time when a %s ticket is reopened", async (from) => {
+    prisma.ticket.findUnique.mockResolvedValue({ status: from });
+
+    await patchTicket("t1", { status: TicketStatus.OPEN });
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data).toMatchObject({ status: TicketStatus.OPEN, resolvedAt: null });
+  });
+
+  test("leaves the resolution time alone when the status doesn't change", async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ status: TicketStatus.RESOLVED });
+
+    await patchTicket("t1", { status: TicketStatus.RESOLVED, category: TicketCategory.REFUND_REQUEST });
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data.resolvedAt).toBeUndefined();
+  });
+
   test("changes the category", async () => {
     const res = await patchTicket("t1", { category: TicketCategory.TECHNICAL_QUESTION });
 
     expect(res.status).toBe(200);
     expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
-      data: { status: undefined, category: TicketCategory.TECHNICAL_QUESTION, assignedToId: undefined },
+      data: { status: undefined, category: TicketCategory.TECHNICAL_QUESTION, assignedToId: undefined, resolvedAt: undefined },
     });
   });
 

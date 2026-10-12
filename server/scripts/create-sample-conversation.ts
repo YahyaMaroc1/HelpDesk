@@ -8,6 +8,7 @@
 // so --reset never touches real messages.
 import { parseArgs } from "node:util";
 import { SenderType } from "../src/generated/prisma/enums.ts";
+import { aiAgentEmail } from "../src/lib/ai-agent.ts";
 import { prisma } from "../src/lib/prisma.ts";
 
 const { values, positionals } = parseArgs({
@@ -539,9 +540,10 @@ if (existing > 0) {
   console.log(`Deleted ${count} sample replies.`);
 }
 
+// The agent replies are a human's, so a ticket still with the AI agent gets the first active human instead.
 const agent =
-  ticket.assignedTo ??
-  (await prisma.user.findFirst({ where: { deletedAt: null }, select: { name: true, email: true }, orderBy: { createdAt: "asc" } }));
+  (ticket.assignedTo?.email === aiAgentEmail ? null : ticket.assignedTo) ??
+  (await prisma.user.findFirst({ where: { deletedAt: null, email: { not: aiAgentEmail } }, select: { name: true, email: true }, orderBy: { createdAt: "asc" } }));
 if (!agent) {
   console.error("No active user to reply as the agent.");
   process.exit(1);

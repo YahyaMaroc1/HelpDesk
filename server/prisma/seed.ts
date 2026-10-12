@@ -1,7 +1,8 @@
-// Creates the admin user from ADMIN_* env vars. Run with `bun run db:seed`.
+// Creates the admin user from ADMIN_* env vars and the AI agent (seed-ai-agent.ts). Run with `bun run db:seed`.
 import { Role } from "../src/generated/prisma/enums.ts";
 import { auth } from "../src/lib/auth.ts";
 import { prisma } from "../src/lib/prisma.ts";
+import { seedAiAgent } from "./seed-ai-agent.ts";
 
 const { ADMIN_NAME = "Admin", ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
 if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
@@ -34,5 +35,7 @@ if (existing) {
   });
   console.log(`Created admin ${email}.`);
 }
+
+await seedAiAgent();
 
 await prisma.$disconnect();

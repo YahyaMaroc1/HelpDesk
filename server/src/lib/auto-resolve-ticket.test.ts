@@ -24,7 +24,8 @@ const prisma = {
 };
 mock.module("./prisma.ts", () => ({ prisma }));
 
-const { aiSenderEmail, autoResolveTicketJob, handOverToAgents } = await import("./auto-resolve-ticket.ts");
+const { autoResolveTicketJob, handOverToAgents } = await import("./auto-resolve-ticket.ts");
+const { aiAgentEmail } = await import("./ai-agent.ts");
 
 // The knowledge base is a real file in a temporary directory (KNOWLEDGE_BASE_PATH). lib/knowledge-base.ts isn't
 // mocked: Bun's module mocks would replace it in knowledge-base.test.ts too.
@@ -74,7 +75,12 @@ afterEach(() => {
 const awaitingAi = { in: [TicketStatus.NEW, TicketStatus.PROCESSING] };
 const claimed = { where: { id: "t1", status: awaitingAi }, data: { status: TicketStatus.PROCESSING } };
 const opened = { where: { id: "t1", status: awaitingAi }, data: { status: TicketStatus.OPEN } };
-const resolved = { where: { id: "t1", status: TicketStatus.PROCESSING }, data: { status: TicketStatus.RESOLVED } };
+// The AI agent lets go of the ticket it couldn't resolve.
+const released = {
+  where: { id: "t1", status: TicketStatus.OPEN, assignedTo: { email: aiAgentEmail } },
+  data: { assignedToId: null },
+};
+const resolved = { where: { id: "t1", status: TicketStatus.PROCESSING }, data: { status: TicketStatus.RESOLVED, resolvedAt: expect.any(Date) } };
 
 describe("autoResolveTicketJob", () => {
   test("moves the ticket to PROCESSING before asking the AI to answer its first message from the knowledge base", async () => {
@@ -111,7 +117,7 @@ describe("autoResolveTicketJob", () => {
         ticketId: "t1",
         senderType: SenderType.AI,
         body: reply,
-        senderEmail: aiSenderEmail,
+        senderEmail: aiAgentEmail,
         senderName: "AI Assistant",
       },
     });
@@ -131,7 +137,8 @@ describe("autoResolveTicketJob", () => {
 
     await autoResolveTicketJob("t1");
 
-    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(released);
     expect(prisma.message.create).not.toHaveBeenCalled();
   });
 
@@ -146,7 +153,8 @@ describe("autoResolveTicketJob", () => {
     await autoResolveTicketJob("t1");
 
     expect(autoResolveTicket).not.toHaveBeenCalled();
-    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(released);
     expect(prisma.message.create).not.toHaveBeenCalled();
   });
 
@@ -165,7 +173,8 @@ describe("autoResolveTicketJob", () => {
 
     await autoResolveTicketJob("t1");
 
-    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenCalledWith(opened);
+    expect(prisma.ticket.updateMany).toHaveBeenLastCalledWith(released);
     expect(prisma.message.create).not.toHaveBeenCalled();
     expect(consoleError).toHaveBeenCalledWith(
       "The AI couldn't answer ticket t1; opening it for the agents:",
@@ -192,9 +201,11 @@ describe("autoResolveTicketJob", () => {
 });
 
 describe("handOverToAgents", () => {
-  test("opens a ticket that's still NEW or PROCESSING", async () => {
+  test("opens a ticket that's still NEW or PROCESSING, then unassigns it if the AI agent has it", async () => {
     await handOverToAgents("t1");
 
-    expect(prisma.ticket.updateMany).toHaveBeenCalledWith(opened);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.ticket.updateMany).toHaveBeenNthCalledWith(1, opened);
+    expect(prisma.ticket.updateMany).toHaveBeenNthCalledWith(2, released);
   });
 });

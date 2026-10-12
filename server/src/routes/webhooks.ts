@@ -3,6 +3,7 @@ import express, { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { Prisma } from "../generated/prisma/client.ts";
 import { SenderType, TicketStatus } from "../generated/prisma/enums.ts";
+import { aiAgentEmail } from "../lib/ai-agent.ts";
 import { prisma } from "../lib/prisma.ts";
 import { enqueueTicketAutoResolution, enqueueTicketClassification } from "../lib/queue.ts";
 import { validate } from "../lib/validate.ts";
@@ -106,17 +107,20 @@ webhooksRouter.post("/inbound-email", async (req, res) => {
     ? await prisma.message.findFirst({
         where: { emailMessageId: { in: threadIds } },
         orderBy: { createdAt: "desc" },
-        select: { ticket: { select: { id: true, status: true } } },
+        select: { ticket: { select: { id: true, status: true, assignedTo: { select: { email: true } } } } },
       })
     : null;
 
   try {
     if (thread) {
       const { ticket } = thread;
+      const reopen = ticket.status === TicketStatus.RESOLVED;
       await prisma.ticket.update({
         where: { id: ticket.id },
         data: {
-          ...(ticket.status === TicketStatus.RESOLVED && { status: TicketStatus.OPEN }),
+          ...(reopen && { status: TicketStatus.OPEN, resolvedAt: null }),
+          // The AI's answer didn't settle it: the agents take over, as with a ticket the AI couldn't resolve.
+          ...(reopen && ticket.assignedTo?.email === aiAgentEmail && { assignedToId: null }),
           messages: { create: message },
         },
       });
@@ -124,16 +128,19 @@ webhooksRouter.post("/inbound-email", async (req, res) => {
       return;
     }
 
-    // The ticket starts NEW. Background jobs (lib/queue.ts) classify it and try to resolve it from the knowledge base,
-    // after which it's RESOLVED or OPEN, so the mail pipeline gets its answer without waiting for the model. The jobs
-    // are queued in the same transaction as the ticket.
+    // The ticket starts NEW and assigned to the AI agent (unassigned if it isn't seeded or was deleted). Background jobs
+    // (lib/queue.ts) classify it and try to resolve it from the knowledge base, after which it's RESOLVED (still the AI
+    // agent's) or OPEN and unassigned, so the mail pipeline gets its answer without waiting for the model. The jobs are
+    // queued in the same transaction as the ticket.
     const ticket = await prisma.$transaction(async (tx) => {
+      const aiAgent = await tx.user.findFirst({ where: { email: aiAgentEmail, deletedAt: null }, select: { id: true } });
       const ticket = await tx.ticket.create({
         data: {
           subject,
           senderEmail: from,
           senderName: fromName,
           status: TicketStatus.NEW,
+          assignedToId: aiAgent?.id ?? null,
           messages: { create: message },
         },
         select: { id: true },

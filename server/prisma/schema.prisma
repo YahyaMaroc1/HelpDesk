@@ -123,6 +123,9 @@ model Ticket {
   // Null until the ticket is classified.
   category     TicketCategory?
   summary      String?
+  // When the ticket was last resolved or closed; null while it's NEW, PROCESSING or OPEN. For the average resolution
+  // time on the dashboard.
+  resolvedAt   DateTime?
   assignedToId String?
   assignedTo   User?           @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   messages     Message[]

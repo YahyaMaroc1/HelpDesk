@@ -12,6 +12,7 @@
     "db:migrate": "bun --bun prisma migrate dev",
     "db:deploy": "bun --bun prisma migrate deploy",
     "db:seed": "bun --bun prisma db seed",
+    "db:seed:ai-agent": "bun prisma/seed-ai-agent.ts",
     "db:studio": "bun --bun prisma studio",
     "email:sample": "bun scripts/send-sample-email.ts",
     "tickets:sample": "bun scripts/create-sample-tickets.ts",

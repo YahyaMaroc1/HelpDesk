@@ -179,6 +179,8 @@ const updateTicketSchema = z
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), { error: "Nothing to update" });
 
+const isResolved = (status: TicketStatus) => status === TicketStatus.RESOLVED || status === TicketStatus.CLOSED;
+
 // Changes a ticket's status, category or assignee and returns the updated ticket, as GET /api/tickets/:id does.
 ticketsRouter.patch("/:id", async (req, res) => {
   const params = validate(ticketParamsSchema, req.params, res, 404);
@@ -188,7 +190,8 @@ ticketsRouter.patch("/:id", async (req, res) => {
   const { id } = params;
   const { status, category, assignedToId } = body;
 
-  if (!(await prisma.ticket.findUnique({ where: { id }, select: { id: true } }))) {
+  const current = await prisma.ticket.findUnique({ where: { id }, select: { status: true } });
+  if (!current) {
     res.status(404).json({ error: "Ticket not found" });
     return;
   }
@@ -198,10 +201,13 @@ ticketsRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  // Prisma leaves undefined fields unchanged.
+  // Prisma leaves undefined fields unchanged. resolvedAt is when the ticket was resolved or closed (a resolved ticket
+  // that's closed keeps it) and is cleared when it's reopened.
+  const resolvedAt =
+    status === undefined || isResolved(status) === isResolved(current.status) ? undefined : isResolved(status) ? new Date() : null;
   const ticket = await prisma.ticket.update({
     where: { id },
-    data: { status, category, assignedToId },
+    data: { status, category, assignedToId, resolvedAt },
     select: ticketDetailFields,
   });
   res.json({ ticket });

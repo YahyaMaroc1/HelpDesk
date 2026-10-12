@@ -6,6 +6,7 @@
 // (@sample.helpdesk.invalid), so --reset never touches real tickets.
 import { parseArgs } from "node:util";
 import { SenderType, TicketCategory, TicketStatus } from "../src/generated/prisma/enums.ts";
+import { aiAgentEmail } from "../src/lib/ai-agent.ts";
 import { prisma } from "../src/lib/prisma.ts";
 
 const { values } = parseArgs({ options: { reset: { type: "boolean", default: false } } });
@@ -75,7 +76,11 @@ if (existing > 0) {
   console.log(`Deleted ${count} sample tickets.`);
 }
 
-const agents = await prisma.user.findMany({ where: { deletedAt: null }, select: { id: true, name: true, email: true } });
+// The human agents: sample replies are written by agents, not the AI.
+const agents = await prisma.user.findMany({
+  where: { deletedAt: null, email: { not: aiAgentEmail } },
+  select: { id: true, name: true, email: true },
+});
 const now = Date.now();
 
 for (let i = 0; i < COUNT; i++) {
@@ -108,6 +113,7 @@ for (let i = 0; i < COUNT; i++) {
       assignedToId: agent?.id ?? null,
       createdAt,
       updatedAt: status === TicketStatus.OPEN ? createdAt : repliedAt,
+      resolvedAt: status === TicketStatus.OPEN ? null : repliedAt,
       messages: {
         create: [
           {

@@ -125,10 +125,10 @@ Based on `project-scope.md` and `tech-stack.md`. Each task is small enough to fi
 
 ## Phase 10 – Dashboard
 
-- [ ] 10.1 `GET /api/dashboard`: ticket counts by status and category, tickets per agent, unassigned open tickets
-- [ ] 10.2 Client: dashboard page with summary cards
+- [ ] 10.1 `GET /api/dashboard`: ticket counts by status and category, tickets per agent, unassigned open tickets (so far: total, open and AI-resolved tickets and the average resolution time)
+- [x] 10.2 Client: dashboard page with summary cards
 - [ ] 10.3 Client: lists of recent and unassigned tickets that link to the ticket detail page
-- [ ] 10.4 Make the dashboard the landing page after login
+- [x] 10.4 Make the dashboard the landing page after login
 
 **Done when:** an agent or admin can see the state of all tickets at a glance and jump into any of them.
 

@@ -9,6 +9,7 @@ import { SenderType, TicketStatus } from "../generated/prisma/enums.ts";
 const prisma = {
   message: { findUnique: mock(), findFirst: mock() },
   ticket: { create: mock(), update: mock() },
+  user: { findFirst: mock() },
   $transaction: mock(),
 };
 mock.module("../lib/prisma.ts", () => ({ prisma }));
@@ -47,6 +48,8 @@ beforeEach(() => {
   prisma.message.findFirst.mockReset().mockResolvedValue(null);
   prisma.ticket.create.mockReset().mockResolvedValue({ id: "t-new" });
   prisma.ticket.update.mockReset().mockResolvedValue({});
+  // The AI agent is seeded.
+  prisma.user.findFirst.mockReset().mockResolvedValue({ id: "ai-agent" });
   // Runs the callback with the stubbed client as its transaction client.
   prisma.$transaction.mockReset().mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
   enqueueTicketClassification.mockReset().mockResolvedValue(undefined);
@@ -135,6 +138,7 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
         senderEmail: "jane@example.com",
         senderName: "Jane Doe",
         status: TicketStatus.NEW,
+        assignedToId: "ai-agent",
         messages: {
           create: {
             senderType: SenderType.CUSTOMER,
@@ -147,6 +151,25 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
       },
       select: { id: true },
     });
+  });
+
+  test("assigns the new ticket to the AI agent, looked up in the same transaction", async () => {
+    await post(email());
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { email: "ai-assistant@helpdesk.invalid", deletedAt: null },
+      select: { id: true },
+    });
+    expect(prisma.user.findFirst.mock.invocationCallOrder[0]).toBeLessThan(prisma.ticket.create.mock.invocationCallOrder[0]!);
+  });
+
+  test("leaves the new ticket unassigned when there's no active AI agent", async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+
+    const res = await post(email());
+
+    expect(res.status).toBe(201);
+    expect(prisma.ticket.create.mock.calls[0]?.[0]).toMatchObject({ data: { assignedToId: null } });
   });
 
   test("queues the new ticket for classification in the transaction that creates it", async () => {
@@ -219,8 +242,9 @@ describe("POST /api/webhooks/inbound-email new emails", () => {
 });
 
 describe("POST /api/webhooks/inbound-email replies", () => {
-  function threadIs(status: TicketStatus) {
-    prisma.message.findFirst.mockResolvedValue({ ticket: { id: "t1", status } });
+  function threadIs(status: TicketStatus, assigneeEmail?: string) {
+    const assignedTo = assigneeEmail ? { email: assigneeEmail } : null;
+    prisma.message.findFirst.mockResolvedValue({ ticket: { id: "t1", status, assignedTo } });
   }
 
   test("appends a reply matched by In-Reply-To to its ticket", async () => {
@@ -254,7 +278,33 @@ describe("POST /api/webhooks/inbound-email replies", () => {
 
     await post(email({ references: "<abc@mail.example.com>" }));
 
-    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({ data: { status: TicketStatus.OPEN } });
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({ data: { status: TicketStatus.OPEN, resolvedAt: null } });
+  });
+
+  test("unassigns the AI agent when a ticket it resolved is reopened", async () => {
+    threadIs(TicketStatus.RESOLVED, "ai-assistant@helpdesk.invalid");
+
+    await post(email({ references: "<abc@mail.example.com>" }));
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0]).toMatchObject({
+      data: { status: TicketStatus.OPEN, assignedToId: null },
+    });
+  });
+
+  test("keeps a human assignee when a resolved ticket is reopened", async () => {
+    threadIs(TicketStatus.RESOLVED, "alan@example.com");
+
+    await post(email({ references: "<abc@mail.example.com>" }));
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data).not.toHaveProperty("assignedToId");
+  });
+
+  test("leaves the AI agent on a closed ticket that gets a reply", async () => {
+    threadIs(TicketStatus.CLOSED, "ai-assistant@helpdesk.invalid");
+
+    await post(email({ references: "<abc@mail.example.com>" }));
+
+    expect(prisma.ticket.update.mock.calls[0]?.[0].data).toEqual({ messages: { create: expect.any(Object) } });
   });
 
   test("doesn't classify or auto-resolve the ticket again", async () => {
