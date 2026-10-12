@@ -162,6 +162,7 @@ Run from the project root:
 - New email → 201 `{ ticketId, result: "created" }` (an `OPEN` ticket with its first `CUSTOMER` message). A reply whose `In-Reply-To`/`References` matches a stored `Message.emailMessageId` → 200 `"appended"` to that ticket, reopening it if `RESOLVED`. A repeated Message-ID → 200 `"duplicate"` (unique index, so concurrent redeliveries are safe too). Message-IDs are stored without angle brackets.
 - `bun run email:sample` (from `server/`, needs the API running) posts a sample email; `--reply-to <Message-ID>` sends a reply to it. `API_URL` targets another server.
 - `bun run tickets:sample` (from `server/`) inserts 100 varied sample tickets into the dev database through Prisma (statuses, categories incl. unclassified, assignees from the active users incl. unassigned, dates over the last 90 days), for trying out sorting and filtering. It refuses if they exist; `--reset` replaces them. They are marked by `@sample.helpdesk.invalid` Message-IDs, so `--reset` leaves other tickets alone.
+- `bun run conversation:sample <ticketId>` (from `server/`) adds a long sample conversation to one dev ticket: 20 replies alternating agent (the assignee, else the first active user) and customer, each at least 20 lines, dated between the newest message and now. It refuses if they exist; `--reset` replaces them (marked by `reply-N.<ticketId>@sample.helpdesk.invalid` Message-IDs).
 
 ## AI reply polishing and ticket summaries
 

@@ -14,7 +14,8 @@
     "db:seed": "bun --bun prisma db seed",
     "db:studio": "bun --bun prisma studio",
     "email:sample": "bun scripts/send-sample-email.ts",
-    "tickets:sample": "bun scripts/create-sample-tickets.ts"
+    "tickets:sample": "bun scripts/create-sample-tickets.ts",
+    "conversation:sample": "bun scripts/create-sample-conversation.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.93",
